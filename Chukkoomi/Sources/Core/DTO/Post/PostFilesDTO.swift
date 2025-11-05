@@ -7,6 +7,7 @@
 
 import Foundation
 
+/// 게시글 파일 업로드 DTO
 struct PostFilesDTO: Encodable {
     let files: [String]
 }
