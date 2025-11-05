@@ -7,7 +7,7 @@
 
 import Foundation
 
-/// 게시글 작성 요청 DTO
+/// 게시글 작성 / 수정 요청 DTO
 struct PostRequestDTO: Codable {
     let category: String
     let title: String
