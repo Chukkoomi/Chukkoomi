@@ -17,3 +17,8 @@ struct PostListResponseDTO: Decodable {
         case nextCursor = "next_cursor"
     }
 }
+
+/// 위치 기반 게시글 전체 조회 응답 DTO (cursor 없음)
+struct LocationPostListResponseDTO: Decodable {
+    let data: [PostResponseDTO]
+}
