@@ -21,8 +21,3 @@ extension RefreshTokenResponseDTO {
         )
     }
 }
-
-// MARK: - Auth Error Response
-struct AuthErrorResponseDTO: Decodable {
-    let message: String
-}
