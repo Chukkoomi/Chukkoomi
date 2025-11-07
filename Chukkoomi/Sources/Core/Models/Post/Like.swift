@@ -10,3 +10,9 @@ import Foundation
 struct Like {
     let likeStatus: Bool
 }
+
+extension Like {
+    var toDTO: LikeRequestDTO {
+        return LikeRequestDTO(likeStatus: likeStatus)
+    }
+}
