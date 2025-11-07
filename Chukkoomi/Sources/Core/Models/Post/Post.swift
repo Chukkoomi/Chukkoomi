@@ -15,7 +15,7 @@ struct Post {
 }
 
 enum Category {
-    
+    case all
 }
 
 /*
