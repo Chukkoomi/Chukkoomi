@@ -1,5 +1,5 @@
 //
-//  ProfileFeature.swift
+//  MyProfileFeature.swift
 //  Chukkoomi
 //
 //  Created by 김영훈 on 11/7/25.
@@ -8,7 +8,7 @@
 import ComposableArchitecture
 import Foundation
 
-struct ProfileFeature: Reducer {
+struct MyProfileFeature: Reducer {
 
     // MARK: - State
     struct State: Equatable {
@@ -58,11 +58,15 @@ struct ProfileFeature: Reducer {
         case postImagesLoaded([PostImage])
         case bookmarkImagesLoaded([PostImage])
         case profileImageLoaded(Data)
+        case postImageDownloaded(id: String, data: Data)
+        case bookmarkImageDownloaded(id: String, data: Data)
 
         // 게시물 fetch
         case fetchPosts(postIds: [String])
         case fetchBookmarks
         case fetchProfileImage(path: String)
+        case fetchPostImage(id: String, path: String)
+        case fetchBookmarkImage(id: String, path: String)
     }
 
     // MARK: - Reducer
@@ -72,11 +76,10 @@ struct ProfileFeature: Reducer {
             state.isLoading = true
             return .run { send in
                 do {
-                    let profileDTO = try await NetworkManager.shared.performRequest(
+                    let profile = try await NetworkManager.shared.performRequest(
                         ProfileRouter.lookupMe,
                         as: ProfileDTO.self
-                    )
-                    let profile = profileDTO.toDomain
+                    ).toDomain
                     await send(.profileLoaded(profile))
                 } catch {
                     // TODO: 에러 처리
@@ -124,14 +127,34 @@ struct ProfileFeature: Reducer {
 
         case .postImagesLoaded(let images):
             state.postImages = images
-            return .none
+            // 각 이미지 다운로드
+            let effects = images.map { image in
+                Effect<Action>.send(.fetchPostImage(id: image.id, path: image.imagePath))
+            }
+            return .merge(effects)
 
         case .bookmarkImagesLoaded(let images):
             state.bookmarkImages = images
-            return .none
+            // 각 이미지 다운로드
+            let effects = images.map { image in
+                Effect<Action>.send(.fetchBookmarkImage(id: image.id, path: image.imagePath))
+            }
+            return .merge(effects)
 
         case .profileImageLoaded(let data):
             state.profileImageData = data
+            return .none
+
+        case .postImageDownloaded(let id, let data):
+            if let index = state.postImages.firstIndex(where: { $0.id == id }) {
+                state.postImages[index].imageData = data
+            }
+            return .none
+
+        case .bookmarkImageDownloaded(let id, let data):
+            if let index = state.bookmarkImages.firstIndex(where: { $0.id == id }) {
+                state.bookmarkImages[index].imageData = data
+            }
             return .none
 
         case .fetchProfileImage(let path):
@@ -143,6 +166,30 @@ struct ProfileFeature: Reducer {
                     await send(.profileImageLoaded(imageData))
                 } catch {
                     print("프로필 이미지 로드 실패: \(error)")
+                }
+            }
+
+        case .fetchPostImage(let id, let path):
+            return .run { send in
+                do {
+                    let imageData = try await NetworkManager.shared.download(
+                        MediaRouter.getData(path: path)
+                    )
+                    await send(.postImageDownloaded(id: id, data: imageData))
+                } catch {
+                    print("게시글 이미지 로드 실패: \(error)")
+                }
+            }
+
+        case .fetchBookmarkImage(let id, let path):
+            return .run { send in
+                do {
+                    let imageData = try await NetworkManager.shared.download(
+                        MediaRouter.getData(path: path)
+                    )
+                    await send(.bookmarkImageDownloaded(id: id, data: imageData))
+                } catch {
+                    print("북마크 이미지 로드 실패: \(error)")
                 }
             }
 
@@ -176,10 +223,11 @@ struct ProfileFeature: Reducer {
 }
 
 // MARK: - Models
-extension ProfileFeature {
+extension MyProfileFeature {
     // 게시글 그리드에 표시할 이미지 정보
     struct PostImage: Equatable, Identifiable {
         let id: String
-        let imageURL: URL
+        let imagePath: String
+        var imageData: Data?
     }
 }

@@ -1,5 +1,5 @@
 //
-//  ProfileView.swift
+//  MyProfileView.swift
 //  Chukkoomi
 //
 //  Created by 박성훈 on 11/5/25.
@@ -8,8 +8,8 @@
 import SwiftUI
 import ComposableArchitecture
 
-struct ProfileView: View {
-    let store: StoreOf<ProfileFeature>
+struct MyProfileView: View {
+    let store: StoreOf<MyProfileFeature>
 
     var body: some View {
         WithViewStore(store, observe: { $0 }) { viewStore in
@@ -53,7 +53,7 @@ struct ProfileView: View {
     }
 
     // MARK: - 프로필 헤더
-    private func profileHeaderSection(viewStore: ViewStoreOf<ProfileFeature>) -> some View {
+    private func profileHeaderSection(viewStore: ViewStoreOf<MyProfileFeature>) -> some View {
         VStack(spacing: AppPadding.small) {
             // 프로필 이미지
             Group {
@@ -88,7 +88,7 @@ struct ProfileView: View {
     }
 
     // MARK: - 통계 섹션
-    private func statsSection(viewStore: ViewStoreOf<ProfileFeature>) -> some View {
+    private func statsSection(viewStore: ViewStoreOf<MyProfileFeature>) -> some View {
         HStack(spacing: 0) {
             statItem(title: "게시글", count: viewStore.postCount)
             Spacer()
@@ -110,7 +110,7 @@ struct ProfileView: View {
     }
 
     // MARK: - 프로필 수정 버튼
-    private func editProfileButton(viewStore: ViewStoreOf<ProfileFeature>) -> some View {
+    private func editProfileButton(viewStore: ViewStoreOf<MyProfileFeature>) -> some View {
         Button {
             viewStore.send(.editProfileButtonTapped)
         } label: {
@@ -125,9 +125,9 @@ struct ProfileView: View {
     }
 
     // MARK: - 탭 선택
-    private func tabSelector(viewStore: ViewStoreOf<ProfileFeature>) -> some View {
+    private func tabSelector(viewStore: ViewStoreOf<MyProfileFeature>) -> some View {
         HStack(spacing: 0) {
-            ForEach(ProfileFeature.State.Tab.allCases, id: \.self) { tab in
+            ForEach(MyProfileFeature.State.Tab.allCases, id: \.self) { tab in
                 Button {
                     viewStore.send(.tabSelected(tab))
                 } label: {
@@ -137,9 +137,13 @@ struct ProfileView: View {
                             .fontWeight(viewStore.selectedTab == tab ? .semibold : .regular)
                             .foregroundColor(viewStore.selectedTab == tab ? .primary : .secondary)
 
-                        Rectangle()
-                            .fill(viewStore.selectedTab == tab ? Color.primary : Color.secondary)
-                            .frame(height: viewStore.selectedTab == tab ? 3 : 0.4)
+                        if viewStore.selectedTab == tab {
+                            Rectangle()
+                                .fill(Color.primary)
+                                .frame(height: 3)
+                        } else {
+                            Divider()
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -149,7 +153,7 @@ struct ProfileView: View {
     }
 
     // MARK: - 게시글 그리드
-    private func postsGrid(viewStore: ViewStoreOf<ProfileFeature>) -> some View {
+    private func postsGrid(viewStore: ViewStoreOf<MyProfileFeature>) -> some View {
         let columns = [
             GridItem(.flexible(), spacing: 4),
             GridItem(.flexible(), spacing: 4),
@@ -179,21 +183,24 @@ struct ProfileView: View {
         }
     }
 
-    private func postGridItem(postImage: ProfileFeature.PostImage) -> some View {
+    private func postGridItem(postImage: MyProfileFeature.PostImage) -> some View {
         GeometryReader { geometry in
-            AsyncImage(url: postImage.imageURL) { image in
-                image
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: geometry.size.width, height: geometry.size.width)
-                    .clipped()
-            } placeholder: {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: geometry.size.width, height: geometry.size.width)
-                    .overlay {
-                        ProgressView()
-                    }
+            Group {
+                if let imageData = postImage.imageData,
+                   let uiImage = UIImage(data: imageData) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.width)
+                        .clipped()
+                } else {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(width: geometry.size.width, height: geometry.size.width)
+                        .overlay {
+                            ProgressView()
+                        }
+                }
             }
         }
         .aspectRatio(1, contentMode: .fit)
@@ -201,40 +208,14 @@ struct ProfileView: View {
 }
 
 // MARK: - Preview
-#Preview {
-    let sampleProfile = Profile(
-        userId: "user123",
-        email: "user@example.com",
-        nickname: "사용자 닉네임",
-        profileImage: nil,
-        introduce: "안녕하세요! 반갑습니다.",
-        followers: [
-            User(userId: "follower1", nickname: "팔로워1", profileImage: nil),
-            User(userId: "follower2", nickname: "팔로워2", profileImage: nil)
-        ],
-        following: [
-            User(userId: "following1", nickname: "팔로잉1", profileImage: nil)
-        ],
-        posts: ["post1", "post2", "post3"]
-    )
-
-    return NavigationStack {
-        ProfileView(
-            store: Store(
-                initialState: ProfileFeature.State(
-                    profile: sampleProfile,
-                    postImages: [
-                        .init(id: "1", imageURL: URL(string: "https://picsum.photos/200")!),
-                        .init(id: "2", imageURL: URL(string: "https://picsum.photos/201")!),
-                        .init(id: "3", imageURL: URL(string: "https://picsum.photos/202")!),
-                        .init(id: "4", imageURL: URL(string: "https://picsum.photos/203")!),
-                        .init(id: "5", imageURL: URL(string: "https://picsum.photos/204")!),
-                        .init(id: "6", imageURL: URL(string: "https://picsum.photos/205")!)
-                    ]
-                )
-            ) {
-                ProfileFeature()
-            }
-        )
-    }
-}
+//#Preview {
+//    return NavigationStack {
+//        MyProfileView(
+//            store: Store(
+//                initialState: MyProfileFeature.State()
+//            ) {
+//                MyProfileFeature()
+//            }
+//        )
+//    }
+//}

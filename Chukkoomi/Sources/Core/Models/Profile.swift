@@ -10,8 +10,8 @@ struct Profile: Equatable {
     let email: String?
     let nickname: String
     let profileImage: String?
-    let introduce: String
-    let followers: [User]
+    let introduce: String?
+    var followers: [User]
     let following: [User]
     let posts: [String]
 }
