@@ -5,8 +5,6 @@
 //  Created by 김영훈 on 11/7/25.
 //
 
-import Foundation
-
 // MARK: - 기능
 enum ProfileRouter {
     case editMe(profile: EditProfileRequestBody) // 내 프로필 수정
