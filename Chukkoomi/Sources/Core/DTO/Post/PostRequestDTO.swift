@@ -24,6 +24,26 @@ struct PostRequestDTO: Codable {
     let value9: String
     let value10: String
     let files: [String]
-    let longitude: Double  // 옵셔널 가능한지 확인 필요 (테스트에서 계속 Loading)
-    let latitude: Double  // 옵셔널 가능한지 확인 필요 (테스트에서 계속 Loading)
+    let longitude: Double
+    let latitude: Double
+    
+    init(model: Post) {
+        self.category = model.category.rawValue
+        self.title = model.title
+        self.price = model.price
+        self.content = model.content
+        self.value1 = model.value1
+        self.value2 = model.value2
+        self.value3 = model.value3
+        self.value4 = model.value4
+        self.value5 = model.value5
+        self.value6 = model.value6
+        self.value7 = model.value7
+        self.value8 = model.value8
+        self.value9 = model.value9
+        self.value10 = model.value10
+        self.files = model.files
+        self.longitude = 0.0
+        self.latitude = 0.0
+    }
 }

@@ -14,16 +14,16 @@ struct PostResponseDTO: Decodable {
     let title: String
     let price: Int
     let content: String
-    let value1: String?
-    let value2: String?
-    let value3: String?
-    let value4: String?
-    let value5: String?
-    let value6: String?
-    let value7: String?
-    let value8: String?
-    let value9: String?
-    let value10: String?
+    let value1: String
+    let value2: String
+    let value3: String
+    let value4: String
+    let value5: String
+    let value6: String
+    let value7: String
+    let value8: String
+    let value9: String
+    let value10: String
     let createdAt: String
     let creator: CreatorDTO
     let files: [String]
@@ -42,6 +42,12 @@ struct PostResponseDTO: Decodable {
         case createdAt, creator, files, likes, likes2, buyers, hashTags
         case commentCount = "comment_count"
         case geolocation, distance
+    }
+}
+
+extension PostResponseDTO {
+    var toModel: Post {
+        return Post(dto: self)
     }
 }
 
