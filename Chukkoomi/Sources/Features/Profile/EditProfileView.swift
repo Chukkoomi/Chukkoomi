@@ -24,7 +24,7 @@ struct EditProfileView: View {
 
                 // 소개 문구 입력
                 introduceSection(viewStore: viewStore)
-                    .padding(.top, AppPadding.large)
+                    .padding(.top, AppPadding.small)
 
                 Spacer()
             }
@@ -111,8 +111,11 @@ struct EditProfileView: View {
             ))
             .textFieldStyle(.plain)
             .padding()
-            .background(Color.gray.opacity(0.1))
-            .customRadius(.small)
+            .background(Color.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+            )
 
             HStack {
                 if !viewStore.nickname.isEmpty {
@@ -145,12 +148,14 @@ struct EditProfileView: View {
             TextField("소개를 입력하세요", text: viewStore.binding(
                 get: \.introduce,
                 send: { .introduceChanged($0) }
-            ), axis: .vertical)
+            ))
             .textFieldStyle(.plain)
             .padding()
-            .background(Color.gray.opacity(0.1))
-            .customRadius(.small)
-            .lineLimit(3, reservesSpace: true)
+            .background(Color.white)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+            )
 
             HStack {
                 if !viewStore.isIntroduceValid {
