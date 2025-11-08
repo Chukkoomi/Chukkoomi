@@ -11,13 +11,13 @@ struct Comment {
     let id: String
     let content: String
     let createdAt: Date
-    let creator: UserSummary
+    let creator: User
     
     init(dto: CommentDTO) {
         self.id = dto.id
         self.content = dto.content
         self.createdAt = DateFormatters.iso8601.date(from: dto.createdAt) ?? Date()
-        self.creator = UserSummary(dto: dto.creator)
+        self.creator = User(userId: dto.creator.user_id, nickname: dto.creator.nick, profileImage: dto.creator.profileImage)
     }
 }
 

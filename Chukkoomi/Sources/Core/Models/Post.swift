@@ -17,7 +17,7 @@ struct Post {
     let value1, value2, value3, value4, value5: String
     let value6, value7, value8, value9, value10: String
     var createAt: Date
-    var creator: UserSummary?
+    var creator: User
     var files: [String]
     var commentCount: Int
     var likes: [String]
@@ -43,8 +43,7 @@ struct Post {
         self.value10 = dto.value10
         self.files = dto.files
         self.createAt = DateFormatters.iso8601.date(from: dto.createdAt) ?? Date()
-        #warning("User 통합 필요")
-        self.creator = UserSummary(dto: dto.creator)
+        self.creator = User(userId: dto.creator.user_id, nickname: dto.creator.nick, profileImage: dto.creator.profileImage)
         self.commentCount = dto.commentCount
         self.likes = dto.likes
         self.likes2 = dto.likes2
@@ -55,19 +54,6 @@ struct Post {
 
 enum PostCategory: String {
     case total = "전체"
-}
-
-// TODO: User로 합치기
-struct UserSummary {
-    let id: String
-    let nick: String
-    let profileImage: String
-    
-    init(dto: CreatorDTO) {
-        self.id = dto.userID
-        self.nick = dto.nick
-        self.profileImage = dto.profileImage
-    }
 }
 
 extension Post {

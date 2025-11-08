@@ -25,7 +25,7 @@ struct PostResponseDTO: Decodable {
     let value9: String
     let value10: String
     let createdAt: String  // 9999-10-19T03:05:03.422Z
-    let creator: CreatorDTO
+    let creator: UserDTO
     let files: [String]
     let likes: [String]
     let likes2: [String]
@@ -51,18 +51,6 @@ extension PostResponseDTO {
     }
 }
 
-#warning("UserDTO 통합 필요")
-/// 작성자 정보
-struct CreatorDTO: Decodable {
-    let userID: String
-    let nick: String
-    let profileImage: String
-    
-    enum CodingKeys: String, CodingKey {
-        case userID = "user_id"
-        case nick, profileImage
-    }
-}
 
 /// 위치 정보
 struct GeolocationDTO: Decodable {
