@@ -18,7 +18,19 @@ struct PostListResponseDTO: Decodable {
     }
 }
 
+extension PostListResponseDTO {
+    var toModel: PostList {
+        return PostList(posts: data.map { Post(dto: $0) }, nextCursor: nextCursor)
+    }
+}
+
 /// 위치 기반 게시글 전체 조회 응답 DTO (cursor 없음)
 struct LocationPostListResponseDTO: Decodable {
     let data: [PostResponseDTO]
+}
+
+extension LocationPostListResponseDTO {
+    var toModel: PostList {
+        return PostList(posts: data.map { Post(dto: $0) }, nextCursor: nil)
+    }
 }
