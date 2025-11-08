@@ -9,7 +9,7 @@ import SwiftUI
 
 enum AppColor {
     /// 주조색
-    static let primary = Color(hex: "#007AFF")
+    static let primary = Color(hex: "#FE333D")
     /// 보조색
     static let secondary = Color(hex: "#007AFF")
 
