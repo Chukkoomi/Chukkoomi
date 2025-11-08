@@ -16,8 +16,9 @@ struct Post {
     #warning("value에 대한 값 구체화 필요")
     let value1, value2, value3, value4, value5: String
     let value6, value7, value8, value9, value10: String
-    var files: [String]
+    var createAt: Date
     var creator: UserSummary?
+    var files: [String]
     var commentCount: Int
     var likes: [String]
     var likes2: [String]
@@ -65,6 +66,12 @@ struct UserSummary {
     let id: String
     let nick: String
     let profileImage: String
+    
+    init(dto: CreatorDTO) {
+        self.id = dto.userID
+        self.nick = dto.nick
+        self.profileImage = dto.profileImage
+    }
 }
 
 extension Post {
