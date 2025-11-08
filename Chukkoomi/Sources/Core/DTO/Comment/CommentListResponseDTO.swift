@@ -12,13 +12,19 @@ struct CommentListResponseDTO: Decodable {
     let data: [CommentDTO]
 }
 
+extension CommentListResponseDTO {
+    var toModel: [Comment] {
+        return data.map { Comment(dto: $0) }
+    }
+}
+
 /// 댓글 (대댓글 포함)
 struct CommentDTO: Decodable {
     let id: String
     let content: String
     let createdAt: String
     let creator: CreatorDTO
-    let replies: [ReplyDTO]?  // 대댓글에는 replies가 포함되지 않음
+    let replies: [CommentDTO]?
 
     enum CodingKeys: String, CodingKey {
         case id = "comment_id"
@@ -26,15 +32,8 @@ struct CommentDTO: Decodable {
     }
 }
 
-/// 대댓글
-struct ReplyDTO: Decodable {
-    let commentID: String
-    let content: String
-    let createdAt: String
-    let creator: CreatorDTO
-
-    enum CodingKeys: String, CodingKey {
-        case commentID = "comment_id"
-        case content, createdAt, creator
+extension CommentDTO {
+    var toModel: Comment {
+        return Comment(dto: self)
     }
 }

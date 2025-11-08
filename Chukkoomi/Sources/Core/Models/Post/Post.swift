@@ -42,18 +42,14 @@ struct Post {
         self.value9 = dto.value9
         self.value10 = dto.value10
         self.files = dto.files
+        self.createAt = DateFormatters.iso8601.date(from: dto.createdAt) ?? Date()
         #warning("User 통합 필요")
-        self.creator = UserSummary(
-            id: dto.creator.userID,
-            nick: dto.creator.nick,
-            profileImage: dto.creator.profileImage
-        )
+        self.creator = UserSummary(dto: dto.creator)
         self.commentCount = dto.commentCount
         self.likes = dto.likes
         self.likes2 = dto.likes2
         self.buyers = dto.buyers
         self.hashTags = dto.hashTags
-        
     }
 }
 

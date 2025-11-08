@@ -12,40 +12,18 @@ struct Comment {
     let content: String
     let createdAt: Date
     let creator: UserSummary
-    let replies: [Comment]?
     
     init(dto: CommentDTO) {
         self.id = dto.id
         self.content = dto.content
-        self.creator = UserSummary(dto.creator)
-        if let replyDTOs = dto.replies {
-            self.replies = replyDTOs.map { Comment(replyDTO: $0) }
-        } else {
-            self.replies = nil
-        }
-        if let date = ISO8601DateFormatter().date(from: dto.createdAt) {
-            self.createdAt = date
-        } else {
-            self.createdAt = Date()
-        }
-    }
-    
-    init(replyDTO: ReplyDTO) {
-        self.id = replyDTO.id
-        self.content = replyDTO.content
-        self.creator = UserSummary(replyDTO.creator)
-        self.replies = nil
-        if let date = ISO8601DateFormatter().date(from: replyDTO.createdAt) {
-            self.createdAt = date
-        } else {
-            self.createdAt = Date()
-        }
+        self.createdAt = DateFormatters.iso8601.date(from: dto.createdAt) ?? Date()
+        self.creator = UserSummary(dto: dto.creator)
     }
 }
 
 extension Comment {
-    static func fromListDTO(_ dto: CommentListResponseDTO) -> [Comment] {
-        return dto.comments.map { Comment(dto: $0) }
+    var toDTO: CommentRequestDTO {
+        return CommentRequestDTO(content: content)
     }
 }
 
