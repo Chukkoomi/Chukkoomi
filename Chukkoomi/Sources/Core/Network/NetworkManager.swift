@@ -31,8 +31,25 @@ final class NetworkManager: NSObject {
 // MARK: - Request Methods
 extension NetworkManager {
 
-    /// HTTP Method와 BodyEncoder에 따라 분기하는 통합 메서드
+    /// HTTP Method와 BodyEncoder에 따라 분기하는 통합 메서드 (401 인터셉트 포함)
     func performRequest<T: Decodable>(_ router: Router, as type: T.Type, progress: ((Double) -> Void)? = nil) async throws -> T {
+        do {
+            return try await performRequestWithoutInterception(router, as: type, progress: progress)
+        } catch NetworkError.statusCode(401) {
+            // 401 에러 발생 -> 토큰 갱신 시도
+            let refreshSuccess = await TokenRefreshManager.shared.refreshTokenIfNeeded()
+
+            guard refreshSuccess else {
+                throw NetworkError.unauthorized
+            }
+
+            // 토큰 갱신 성공 -> 원래 요청 재시도
+            return try await performRequestWithoutInterception(router, as: type, progress: progress)
+        }
+    }
+
+    /// HTTP Method와 BodyEncoder에 따라 분기하는 통합 메서드 (401 인터셉트 없음)
+    func performRequestWithoutInterception<T: Decodable>(_ router: Router, as type: T.Type, progress: ((Double) -> Void)? = nil) async throws -> T {
         let data: Data
 
         switch router.method {
@@ -261,6 +278,7 @@ enum NetworkError: Error, LocalizedError {
     case statusCode(Int)
     case noData
     case decodingFailed(Error)
+    case unauthorized // 토큰 갱신 실패
 
     var errorDescription: String? {
         switch self {
@@ -272,6 +290,8 @@ enum NetworkError: Error, LocalizedError {
             return "데이터가 없습니다."
         case .decodingFailed(let error):
             return "디코딩에 실패했습니다: \(error.localizedDescription)"
+        case .unauthorized:
+            return "인증에 실패했습니다. 다시 로그인해주세요."
         }
     }
 }
