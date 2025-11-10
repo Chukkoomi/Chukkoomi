@@ -84,7 +84,7 @@ struct UserSearchView: View {
                 Button {
                     viewStore.send(.clearSearch)
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    AppIcon.xmarkCircleFill
                         .foregroundColor(.secondary)
                 }
             }

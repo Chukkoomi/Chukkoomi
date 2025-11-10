@@ -14,4 +14,7 @@ enum AppIcon {
     static let camera = Image(systemName: "camera")
     static let plus = Image(systemName: "plus")
     static let searchUser = Image(systemName: "person.crop.badge.magnifyingglass")
+    static let photo = Image(systemName: "photo")
+    static let xmarkCircleFill = Image(systemName: "xmark.circle.fill")
+    static let xmark = Image(systemName: "xmark")
 }
