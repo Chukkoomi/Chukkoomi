@@ -7,37 +7,32 @@
 
 import Foundation
 
+import Foundation
+
 struct Post {
-    var categopry: Category
-    var title: String
-    var price: Int
-    var content: String
+    let id: String
+    let teams: FootballTeams
+    let title: String
+    let price: Int
+    let content: String
+    #warning("values - 데이터 확정 시 수정 필요")
+    let values: [String]
+    let createdAt: Date
+    let creator: User
+    let files: [String]
+    let likes: [String]
+    let buyers: [String]
+    let hashTags: [String]
+    let commentCount: Int
+    let location: GeoLocation
+    let distance: Double?
 }
 
-enum Category {
+enum FootballTeams {
     
 }
 
-/*
-{
-  "category": "sesac",
-  "title": "같이 앱만드실 분",
-  "price": 100,
-  "content": "오늘도 파이팅! #영등포 #청취사 #새싹 #iOS #swift #⭐️ #sesac",
-  "value1": "false",
-  "value2": "10",
-  "value3": "3시간",
-  "value4": "미정",
-  "value5": "LSLP 같이 하실분",
-  "value6": "추가 정보 6",
-  "value7": "추가 정보 7",
-  "value8": "추가 정보 8",
-  "value9": "추가 정보 9",
-  "value10": "추가 정보 10",
-  "files": [
-    "/data/posts/sesac_1712739634962.png"
-  ],
-  "longitude": 126.886417,
-  "latitude": 37.517682
+struct GeoLocation {
+    let longitude: Double
+    let latitude: Double
 }
-*/
