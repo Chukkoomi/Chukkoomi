@@ -9,19 +9,19 @@ import SwiftUI
 
 enum AppColor {
     /// 주조색
-    static let primary = Color(hex: "#007AFF")
-    /// 보조색
-    static let secondary = Color(hex: "#007AFF")
+    static let primary = Color(hex: "#FE333D")
+    /// 비활성화
+    static let disabled = Color(hex: "#FD8C8C")
 
     /// 메인 텍스트 색상
-    static let textPrimary = Color(hex: "#007AFF")
+    static let textPrimary = Color(hex: "#000000")
     /// 보조 텍스트 색상
     static let textSecondary = Color(hex: "#007AFF")
     
     /// 구분 선 색상
-    static let divider = Color(hex: "#007AFF")
+    static let divider = Color(hex: "#C7C7C7")
     /// 배경색
-    static let background = Color(hex: "#007AFF")
+    static let background = Color(hex: "#FFFFFF")
 }
 
 

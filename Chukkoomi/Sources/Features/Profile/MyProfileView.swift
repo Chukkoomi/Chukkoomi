@@ -42,7 +42,7 @@ struct MyProfileView: View {
                     Button {
                         viewStore.send(.searchButtonTapped)
                     } label: {
-                        AppIcon.search
+                        AppIcon.searchUser
                     }
                 }
             }
@@ -116,10 +116,10 @@ struct MyProfileView: View {
         } label: {
             Text("프로필 수정")
                 .font(.appBody)
-                .foregroundColor(.primary)
+                .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 36)
-                .background(Color.gray.opacity(0.1))
+                .background(AppColor.primary)
                 .customRadius(.small)
         }
     }
@@ -163,10 +163,10 @@ struct MyProfileView: View {
         let items = viewStore.selectedTab == .posts ? viewStore.postImages : viewStore.bookmarkImages
 
         return ZStack {
-            if items.isEmpty {
+            if items.isEmpty && viewStore.selectedTab == .bookmarks {
                 VStack(spacing: AppPadding.medium) {
-                    Text(viewStore.selectedTab == .posts ? "게시글이 없습니다." : "북마크한 게시글이 없습니다.")
-                        .font(.appBody)
+                    Text("북마크한 게시글이 없습니다.")
+                        .font(.appSubTitle)
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -175,6 +175,11 @@ struct MyProfileView: View {
                     LazyVGrid(columns: columns, spacing: 4) {
                         ForEach(items) { image in
                             postGridItem(postImage: image)
+                        }
+
+                        // 게시글 탭일 때만 추가 버튼 표시
+                        if viewStore.selectedTab == .posts {
+                            addPostButton(viewStore: viewStore)
                         }
                     }
                     .padding(.horizontal, 4)
@@ -201,6 +206,25 @@ struct MyProfileView: View {
                             ProgressView()
                         }
                 }
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+    }
+
+    // MARK: - 게시글 추가 버튼
+    private func addPostButton(viewStore: ViewStoreOf<MyProfileFeature>) -> some View {
+        GeometryReader { geometry in
+            Button {
+                viewStore.send(.addPostButtonTapped)
+            } label: {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: geometry.size.width, height: geometry.size.width)
+                    .overlay {
+                        AppIcon.plus
+                            .foregroundColor(.white)
+                            .font(.system(size: 30))
+                    }
             }
         }
         .aspectRatio(1, contentMode: .fit)

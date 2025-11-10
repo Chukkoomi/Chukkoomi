@@ -18,16 +18,16 @@ struct OtherProfileView: View {
                 profileHeaderSection(viewStore: viewStore)
                     .padding(.top, AppPadding.large)
 
-                // 팔로우, 메시지 버튼
-                actionButtons(viewStore: viewStore)
-                    .padding(.top, AppPadding.medium)
-
                 // 통계 섹션
                 statsSection(viewStore: viewStore)
                     .padding(.top, AppPadding.large)
+                
+                // 팔로우, 메시지 버튼
+                actionButtons(viewStore: viewStore)
+                    .padding(.top, AppPadding.large)
 
                 Divider()
-                    .padding(.top, AppPadding.medium)
+                    .padding(.top, AppPadding.large)
                 
                 // 그리드
                 postsGrid(viewStore: viewStore)
@@ -80,7 +80,7 @@ struct OtherProfileView: View {
 
     // MARK: - 액션 버튼
     private func actionButtons(viewStore: ViewStoreOf<OtherProfileFeature>) -> some View {
-        HStack(spacing: AppPadding.small) {
+        HStack(spacing: AppPadding.large) {
             // 팔로우 버튼
             Button {
                 viewStore.send(.followButtonTapped)
@@ -90,7 +90,11 @@ struct OtherProfileView: View {
                     .foregroundColor(viewStore.isFollowing ? .primary : .white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 36)
-                    .background(viewStore.isFollowing ? Color.gray.opacity(0.1) : Color.blue)
+                    .background(viewStore.isFollowing ? .clear : AppColor.primary)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppCornerRadius.small.rawValue)
+                            .stroke(viewStore.isFollowing ? AppColor.divider : .clear, lineWidth: 1)
+                    )
                     .customRadius(.small)
             }
 
@@ -103,7 +107,10 @@ struct OtherProfileView: View {
                     .foregroundColor(.primary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 36)
-                    .background(Color.gray.opacity(0.1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AppCornerRadius.small.rawValue)
+                            .stroke(AppColor.divider, lineWidth: 1)
+                    )
                     .customRadius(.small)
             }
         }
@@ -143,7 +150,7 @@ struct OtherProfileView: View {
             if viewStore.postImages.isEmpty {
                 VStack(spacing: AppPadding.medium) {
                     Text("게시글이 없습니다.")
-                        .font(.appBody)
+                        .font(.appSubTitle)
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

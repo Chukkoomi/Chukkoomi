@@ -51,6 +51,7 @@ struct MyProfileFeature: Reducer {
         case onAppear
         case searchButtonTapped
         case editProfileButtonTapped
+        case addPostButtonTapped
         case tabSelected(State.Tab)
 
         // API 응답
@@ -89,6 +90,10 @@ struct MyProfileFeature: Reducer {
 
         case .searchButtonTapped:
             // TODO: 검색 화면으로 이동
+            return .none
+
+        case .addPostButtonTapped:
+            // TODO: 게시글 작성 화면으로 이동
             return .none
 
         case .editProfileButtonTapped:
