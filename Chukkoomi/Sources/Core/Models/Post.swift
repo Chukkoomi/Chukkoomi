@@ -30,6 +30,7 @@ struct Post {
 }
 
 extension Post {
+    /// 게시글 작성 & 수정시 사용하는 생성자
     init(
         teams: FootballTeams,
         title: String,
