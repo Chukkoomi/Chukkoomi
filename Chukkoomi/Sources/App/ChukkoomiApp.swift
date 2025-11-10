@@ -6,22 +6,12 @@
 //
 
 import SwiftUI
-import ComposableArchitecture
 
 @main
 struct ChukkoomiApp: App {
     var body: some Scene {
         WindowGroup {
-//            ContentView()
-            NavigationStack {
-                GalleryPickerView(
-                    store: Store(
-                        initialState: GalleryPickerFeature.State()
-                    ) {
-                        GalleryPickerFeature()
-                    }
-                )
-            }
+            ContentView()
         }
     }
 }
