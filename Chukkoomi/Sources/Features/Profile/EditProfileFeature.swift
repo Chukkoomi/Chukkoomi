@@ -7,8 +7,10 @@
 
 import ComposableArchitecture
 import Foundation
+import UIKit
 
-struct EditProfileFeature: Reducer {
+@Reducer
+struct EditProfileFeature {
 
     // MARK: - State
     struct State: Equatable {
@@ -17,6 +19,8 @@ struct EditProfileFeature: Reducer {
         var introduce: String
         var profileImageData: Data?
         var isLoading: Bool = false
+
+        @PresentationState var galleryPicker: GalleryPickerFeature.State?
 
         // Validation
         var isNicknameLengthValid: Bool {
@@ -63,14 +67,17 @@ struct EditProfileFeature: Reducer {
         case introduceChanged(String)
         case profileUpdated(Profile)
         case dismiss
+        case galleryPicker(PresentationAction<GalleryPickerFeature.Action>)
+        case profileImageCompressed(Data)
     }
 
-    // MARK: - Reducer
+    // MARK: - Body
     @Dependency(\.dismiss) var dismiss
 
-    func reduce(into state: inout State, action: Action) -> Effect<Action> {
-        switch action {
-        case .cancelButtonTapped:
+    var body: some ReducerOf<Self> {
+        Reduce { state, action in
+            switch action {
+            case .cancelButtonTapped:
             return .run { send in
                 await send(.dismiss)
             }
@@ -108,7 +115,10 @@ struct EditProfileFeature: Reducer {
             }
 
         case .profileImageTapped:
-            // TODO: 커스텀 갤러리 화면으로 이동
+            state.galleryPicker = GalleryPickerFeature.State(
+                allowsVideo: false,
+                presentationMode: .push
+            )
             return .none
 
         case .nicknameChanged(let nickname):
@@ -129,6 +139,74 @@ struct EditProfileFeature: Reducer {
             return .run { _ in
                 await self.dismiss()
             }
+
+        case .galleryPicker(.presented(.delegate(.didSelectImage(let imageData)))):
+            // 프로필 사진을 100KB 이하로 압축
+            return .run { send in
+                if let image = UIImage(data: imageData),
+                   let compressedData = await compressImage(image, maxSizeInBytes: 100_000) {
+                    await send(.profileImageCompressed(compressedData))
+                }
+            }
+
+        case .profileImageCompressed(let data):
+            state.profileImageData = data
+            return .none
+
+        case .galleryPicker:
+            return .none
+            }
         }
+        .ifLet(\.$galleryPicker, action: \.galleryPicker) {
+            GalleryPickerFeature()
+        }
+    }
+
+    // MARK: - Helper
+    private func compressImage(_ image: UIImage, maxSizeInBytes: Int) async -> Data? {
+        // 프로필 이미지 크기로 리사이징 (800x800)
+        let maxDimension: CGFloat = 800
+        var resizedImage = image
+
+        if image.size.width > maxDimension || image.size.height > maxDimension {
+            let ratio = min(maxDimension / image.size.width, maxDimension / image.size.height)
+            let newSize = CGSize(
+                width: image.size.width * ratio,
+                height: image.size.height * ratio
+            )
+
+            UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+            image.draw(in: CGRect(origin: .zero, size: newSize))
+            if let scaledImage = UIGraphicsGetImageFromCurrentImageContext() {
+                resizedImage = scaledImage
+            }
+            UIGraphicsEndImageContext()
+        }
+
+        // 압축 품질을 조정하면서 100KB 이하로 만들기
+        var compression: CGFloat = 0.8
+        let minCompression: CGFloat = 0.1
+        let step: CGFloat = 0.1
+
+        guard var imageData = resizedImage.jpegData(compressionQuality: compression) else {
+            return nil
+        }
+
+        // 이미 100KB 이하면 그대로 반환
+        if imageData.count <= maxSizeInBytes {
+            return imageData
+        }
+
+        // 압축 품질을 점진적으로 낮추면서 100KB 이하로 만들기
+        while imageData.count > maxSizeInBytes && compression > minCompression {
+            compression -= step
+            if let compressedData = resizedImage.jpegData(compressionQuality: max(compression, minCompression)) {
+                imageData = compressedData
+            } else {
+                break
+            }
+        }
+
+        return imageData
     }
 }

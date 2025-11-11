@@ -98,12 +98,14 @@ extension NetworkManager {
 
     // 파일 업로드 요청 - Data 반환 (progress tracking 지원)
     private func upload(_ router: Router, progress: ((Double) -> Void)? = nil) async throws -> Data {
-        let urlRequest = try router.asURLRequest()
+        var urlRequest = try router.asURLRequest()
 
         guard let bodyData = urlRequest.httpBody else {
             throw NetworkError.noData
         }
 
+        // uploadTask는 URLRequest에 httpBody가 있으면 안 되므로 제거
+        urlRequest.httpBody = nil
         let task = session.uploadTask(with: urlRequest, from: bodyData)
         let taskIdentifier = task.taskIdentifier
 
