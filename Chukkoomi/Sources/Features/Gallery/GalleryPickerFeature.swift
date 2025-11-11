@@ -117,16 +117,13 @@ struct GalleryPickerFeature: Reducer {
             return .none
 
         case .confirmSelection:
-            guard let selectedImage = state.selectedImage else {
+            guard let selectedImage = state.selectedImage,
+                  let imageData = selectedImage.jpegData(compressionQuality: 0.8) else {
                 return .none
             }
 
             return .run { send in
-                // 이미지를 100KB 이하로 압축
-                let compressedData = await compressImage(selectedImage, maxSizeInBytes: 100_000)
-                if let imageData = compressedData {
-                    await send(.delegate(.didSelectImage(imageData)))
-                }
+                await send(.delegate(.didSelectImage(imageData)))
                 await self.dismiss()
             }
 
@@ -156,53 +153,6 @@ struct GalleryPickerFeature: Reducer {
                 continuation.resume(returning: image)
             }
         }
-    }
-
-    private func compressImage(_ image: UIImage, maxSizeInBytes: Int) async -> Data? {
-        // 초기 압축 품질
-        var compression: CGFloat = 0.8
-        let minCompression: CGFloat = 0.1
-        let step: CGFloat = 0.1
-
-        guard var imageData = image.jpegData(compressionQuality: compression) else {
-            return nil
-        }
-
-        // 이미 100KB 이하면 그대로 반환
-        if imageData.count <= maxSizeInBytes {
-            return imageData
-        }
-
-        // 압축 품질을 점진적으로 낮추면서 100KB 이하로 만들기
-        while imageData.count > maxSizeInBytes && compression > minCompression {
-            compression -= step
-            if let compressedData = image.jpegData(compressionQuality: max(compression, minCompression)) {
-                imageData = compressedData
-            } else {
-                break
-            }
-        }
-
-        // 여전히 크다면 이미지 리사이징
-        if imageData.count > maxSizeInBytes {
-            let ratio = sqrt(CGFloat(maxSizeInBytes) / CGFloat(imageData.count))
-            let newSize = CGSize(
-                width: image.size.width * ratio * 0.8,
-                height: image.size.height * ratio * 0.8
-            )
-
-            UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
-            image.draw(in: CGRect(origin: .zero, size: newSize))
-            let resizedImage = UIGraphicsGetImageFromCurrentImageContext()
-            UIGraphicsEndImageContext()
-
-            if let resizedImage = resizedImage,
-               let resizedData = resizedImage.jpegData(compressionQuality: 0.8) {
-                imageData = resizedData
-            }
-        }
-
-        return imageData
     }
 }
 

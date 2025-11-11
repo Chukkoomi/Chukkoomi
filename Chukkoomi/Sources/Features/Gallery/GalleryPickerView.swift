@@ -61,7 +61,7 @@ struct GalleryPickerView: View {
                     Button {
                         viewStore.send(.confirmSelection)
                     } label: {
-                        Text(viewStore.presentationMode == .modal ? "완료" : "다음")
+                        Text(viewStore.presentationMode == .modal ? "다음" : "완료")
                             .foregroundColor(viewStore.selectedItem != nil ? .primary : .gray)
                     }
                     .disabled(viewStore.selectedItem == nil)
