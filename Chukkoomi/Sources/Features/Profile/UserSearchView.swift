@@ -23,43 +23,12 @@ struct UserSearchView: View {
                     .padding(.top, AppPadding.medium)
 
                 // 검색 결과 리스트
-                if viewStore.isLoading {
-                    Spacer()
-                    ProgressView()
-                    Spacer()
-                } else if viewStore.isSearching && viewStore.searchResults.isEmpty {
-                    Spacer()
-                    Text("검색 결과가 없습니다")
-                        .font(.appBody)
-                        .foregroundColor(.secondary)
-                    Spacer()
-                } else if !viewStore.searchResults.isEmpty {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(viewStore.searchResults) { result in
-                                userRow(result: result, viewStore: viewStore)
-                                    .onTapGesture {
-                                        viewStore.send(.userTapped(result.user.userId))
-                                    }
-
-                                if result.id != viewStore.searchResults.last?.id {
-                                    Divider()
-                                        .padding(.leading, 80)
-                                }
-                            }
-                        }
-                    }
-                    .simultaneousGesture(
-                        DragGesture().onChanged { _ in
-                            isSearchFieldFocused = false
-                        }
-                    )
-                } else {
-                    Spacer()
-                }
+                searchResultsList(viewStore: viewStore)
             }
             .navigationTitle("유저 검색")
             .navigationBarTitleDisplayMode(.inline)
+            // 이 파일 전용 네비게이션 연결
+            .modifier(UserSearchNavigation(store: store))
         }
     }
 
@@ -99,6 +68,41 @@ struct UserSearchView: View {
         )
     }
 
+    // MARK: - 검색 결과 리스트
+    private func searchResultsList(viewStore: ViewStoreOf<UserSearchFeature>) -> some View {
+        Group {
+            if viewStore.isLoading {
+                Spacer()
+                ProgressView()
+                Spacer()
+            } else if viewStore.isSearching && viewStore.searchResults.isEmpty {
+                Spacer()
+                Text("검색 결과가 없습니다")
+                    .font(.appBody)
+                    .foregroundColor(.secondary)
+                Spacer()
+            } else if !viewStore.searchResults.isEmpty {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(viewStore.searchResults) { result in
+                            userRow(result: result, viewStore: viewStore)
+                                .onTapGesture {
+                                    viewStore.send(.userTapped(result.user.userId))
+                                }
+                        }
+                    }
+                }
+                .simultaneousGesture(
+                    DragGesture().onChanged { _ in
+                        isSearchFieldFocused = false
+                    }
+                )
+            } else {
+                Spacer()
+            }
+        }
+    }
+
     // MARK: - 유저 행
     private func userRow(result: UserSearchFeature.SearchResult, viewStore: ViewStoreOf<UserSearchFeature>) -> some View {
         HStack(spacing: AppPadding.medium) {
@@ -133,6 +137,20 @@ struct UserSearchView: View {
         .padding(.horizontal, AppPadding.large)
         .padding(.vertical, AppPadding.medium)
         .background(Color.clear)
+    }
+}
+
+// MARK: - Navigation 구성
+private struct UserSearchNavigation: ViewModifier {
+    let store: StoreOf<UserSearchFeature>
+
+    func body(content: Content) -> some View {
+        content
+            .navigationDestination(
+                store: store.scope(state: \.$otherProfile, action: \.otherProfile)
+            ) { store in
+                OtherProfileView(store: store)
+            }
     }
 }
 

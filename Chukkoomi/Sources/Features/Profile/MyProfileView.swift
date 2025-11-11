@@ -49,16 +49,8 @@ struct MyProfileView: View {
             .onAppear {
                 viewStore.send(.onAppear)
             }
-            .navigationDestination(
-                store: store.scope(state: \.$editProfile, action: \.editProfile)
-            ) { store in
-                EditProfileView(store: store)
-            }
-            .navigationDestination(
-                store: store.scope(state: \.$userSearch, action: \.userSearch)
-            ) { store in
-                UserSearchView(store: store)
-            }
+            // 네비게이션 연결
+            .modifier(MyProfileNavigation(store: store))
         }
     }
 
@@ -238,6 +230,25 @@ struct MyProfileView: View {
             }
         }
         .aspectRatio(1, contentMode: .fit)
+    }
+}
+
+// MARK: - Navigation 구성
+private struct MyProfileNavigation: ViewModifier {
+    let store: StoreOf<MyProfileFeature>
+
+    func body(content: Content) -> some View {
+        content
+            .navigationDestination(
+                store: store.scope(state: \.$editProfile, action: \.editProfile)
+            ) { store in
+                EditProfileView(store: store)
+            }
+            .navigationDestination(
+                store: store.scope(state: \.$userSearch, action: \.userSearch)
+            ) { store in
+                UserSearchView(store: store)
+            }
     }
 }
 
