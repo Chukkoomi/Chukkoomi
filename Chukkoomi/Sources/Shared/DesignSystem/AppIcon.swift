@@ -17,4 +17,10 @@ enum AppIcon {
     static let photo = Image(systemName: "photo")
     static let xmarkCircleFill = Image(systemName: "xmark.circle.fill")
     static let xmark = Image(systemName: "xmark")
+
+    // Tab Bar Icons
+    static let home = Image(systemName: "house.fill")
+    static let post = Image(systemName: "video.fill.badge.plus")
+    static let chat = Image(systemName: "bubble.left.fill")
+    static let profile = Image(systemName: "person")
 }

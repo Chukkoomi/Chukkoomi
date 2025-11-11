@@ -40,6 +40,11 @@ struct GalleryPickerFeature: Reducer {
         case selectedImageLoaded(UIImage)
         case confirmSelection
         case cancel
+        case delegate(Delegate)
+
+        enum Delegate: Equatable {
+            case didSelectImage(Data)
+        }
     }
 
     // MARK: - Reducer
@@ -112,8 +117,13 @@ struct GalleryPickerFeature: Reducer {
             return .none
 
         case .confirmSelection:
-            // TODO: 선택된 이미지 전달
-            return .run { _ in
+            guard let selectedImage = state.selectedImage,
+                  let imageData = selectedImage.jpegData(compressionQuality: 0.8) else {
+                return .none
+            }
+
+            return .run { send in
+                await send(.delegate(.didSelectImage(imageData)))
                 await self.dismiss()
             }
 
@@ -121,6 +131,9 @@ struct GalleryPickerFeature: Reducer {
             return .run { _ in
                 await self.dismiss()
             }
+
+        case .delegate:
+            return .none
         }
     }
 
