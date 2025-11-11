@@ -38,8 +38,8 @@ struct FollowListFeature {
         }
 
         enum ListType: Equatable {
-            case followers(userId: String)
-            case following(userId: String)
+            case followers(users: [User])
+            case following(users: [User])
         }
     }
 
@@ -59,40 +59,15 @@ struct FollowListFeature {
         Reduce { state, action in
             switch action {
             case .onAppear:
-                state.isLoading = true
-                return .run { [listType = state.listType] send in
-                    do {
-                        let profile: Profile
-                        switch listType {
-                        case .followers(let userId), .following(let userId):
-                            // userId가 "me"이면 내 프로필, 아니면 다른 사람 프로필 조회
-                            if userId == "me" {
-                                profile = try await NetworkManager.shared.performRequest(
-                                    ProfileRouter.lookupMe,
-                                    as: ProfileDTO.self
-                                ).toDomain
-                            } else {
-                                profile = try await NetworkManager.shared.performRequest(
-                                    ProfileRouter.lookupOther(id: userId),
-                                    as: ProfileDTO.self
-                                ).toDomain
-                            }
-                        }
-
-                        // 팔로워 또는 팔로잉 목록 추출
-                        let users: [User]
-                        switch listType {
-                        case .followers:
-                            users = profile.followers
-                        case .following:
-                            users = profile.following
-                        }
-
-                        await send(.usersLoaded(users))
-                    } catch {
-                        print("팔로우 목록 로드 실패: \(error)")
-                    }
+                let users: [User]
+                switch state.listType {
+                case .followers(let userList):
+                    users = userList
+                case .following(let userList):
+                    users = userList
                 }
+
+                return .send(.usersLoaded(users))
 
             case .userTapped(let userId):
                 state.otherProfile = OtherProfileFeature.State(userId: userId)

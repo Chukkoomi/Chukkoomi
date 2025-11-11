@@ -116,14 +116,16 @@ struct OtherProfileFeature {
             return .none
 
         case .followerButtonTapped:
+            guard let profile = state.profile else { return .none }
             state.followList = FollowListFeature.State(
-                listType: .followers(userId: state.userId)
+                listType: .followers(users: profile.followers)
             )
             return .none
 
         case .followingButtonTapped:
+            guard let profile = state.profile else { return .none }
             state.followList = FollowListFeature.State(
-                listType: .following(userId: state.userId)
+                listType: .following(users: profile.following)
             )
             return .none
 
