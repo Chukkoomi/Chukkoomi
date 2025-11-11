@@ -20,40 +20,28 @@ struct MainTabView: View {
                 // Home Tab
                 ContentView()
                     .tabItem {
-                        tabIcon(
-                            for: .home,
-                            isSelected: viewStore.selectedTab == .home
-                        )
+                        tabIcon(for: .home)
                     }
                     .tag(MainTabFeature.State.Tab.home)
 
                 // Search Tab
                 ContentView()
                     .tabItem {
-                        tabIcon(
-                            for: .search,
-                            isSelected: viewStore.selectedTab == .search
-                        )
+                        tabIcon(for: .search)
                     }
                     .tag(MainTabFeature.State.Tab.search)
 
                 // Post Tab
                 ContentView()
                     .tabItem {
-                        tabIcon(
-                            for: .post,
-                            isSelected: viewStore.selectedTab == .post
-                        )
+                        tabIcon(for: .post)
                     }
                     .tag(MainTabFeature.State.Tab.post)
 
                 // Chat Tab
                 ContentView()
                     .tabItem {
-                        tabIcon(
-                            for: .chat,
-                            isSelected: viewStore.selectedTab == .chat
-                        )
+                        tabIcon(for: .chat)
                     }
                     .tag(MainTabFeature.State.Tab.chat)
 
@@ -67,10 +55,7 @@ struct MainTabView: View {
                     )
                 }
                 .tabItem {
-                    tabIcon(
-                        for: .profile,
-                        isSelected: viewStore.selectedTab == .profile
-                    )
+                    tabIcon(for: .profile)
                 }
                 .tag(MainTabFeature.State.Tab.profile)
             }
@@ -79,18 +64,18 @@ struct MainTabView: View {
 
     // MARK: - Helper
     @ViewBuilder
-    private func tabIcon(for tab: MainTabFeature.State.Tab, isSelected: Bool) -> some View {
+    private func tabIcon(for tab: MainTabFeature.State.Tab) -> some View {
         switch tab {
         case .home:
-            isSelected ? AppIcon.homeFill : AppIcon.home
+            AppIcon.home
         case .search:
             AppIcon.search
         case .post:
             AppIcon.post
         case .chat:
-            isSelected ? AppIcon.chatFill : AppIcon.chat
+            AppIcon.chat
         case .profile:
-            isSelected ? AppIcon.personFill : AppIcon.person
+            AppIcon.profile
         }
     }
 }
