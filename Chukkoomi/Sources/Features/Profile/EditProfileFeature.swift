@@ -116,8 +116,7 @@ struct EditProfileFeature {
 
         case .profileImageTapped:
             state.galleryPicker = GalleryPickerFeature.State(
-                allowsVideo: false,
-                presentationMode: .push
+                pickerMode: .profileImage
             )
             return .none
 

@@ -183,10 +183,12 @@ private struct EditProfileNavigation: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .navigationDestination(
+            .fullScreenCover(
                 store: store.scope(state: \.$galleryPicker, action: \.galleryPicker)
             ) { store in
-                GalleryPickerView(store: store)
+                NavigationStack {
+                    GalleryPickerView(store: store)
+                }
             }
     }
 }

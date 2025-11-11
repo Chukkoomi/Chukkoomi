@@ -45,15 +45,12 @@ struct GalleryPickerView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
-                // 모달일 때만 왼쪽에 X 버튼 표시
-                if viewStore.presentationMode == .modal {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button {
-                            viewStore.send(.cancel)
-                        } label: {
-                            AppIcon.xmark
-                                .foregroundColor(.primary)
-                        }
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        viewStore.send(.cancel)
+                    } label: {
+                        AppIcon.xmark
+                            .foregroundColor(.primary)
                     }
                 }
 
@@ -61,7 +58,7 @@ struct GalleryPickerView: View {
                     Button {
                         viewStore.send(.confirmSelection)
                     } label: {
-                        Text(viewStore.presentationMode == .modal ? "다음" : "완료")
+                        Text(viewStore.pickerMode.buttonTitle)
                             .foregroundColor(viewStore.selectedItem != nil ? .primary : .gray)
                     }
                     .disabled(viewStore.selectedItem == nil)
