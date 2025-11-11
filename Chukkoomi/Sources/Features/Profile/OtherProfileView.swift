@@ -187,7 +187,7 @@ struct OtherProfileView: View {
 
     private func postGridItem(postImage: OtherProfileFeature.PostImage) -> some View {
         GeometryReader { geometry in
-            Group {
+            ZStack {
                 if let imageData = postImage.imageData,
                    let uiImage = UIImage(data: imageData) {
                     Image(uiImage: uiImage)
@@ -202,6 +202,20 @@ struct OtherProfileView: View {
                         .overlay {
                             ProgressView()
                         }
+                }
+
+                // 동영상 아이콘
+                if postImage.isVideo {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            AppIcon.videoCircle
+                                .foregroundColor(.white)
+                                .font(.system(size: 20))
+                                .padding(8)
+                        }
+                    }
                 }
             }
         }
