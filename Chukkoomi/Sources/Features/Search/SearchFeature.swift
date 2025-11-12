@@ -7,6 +7,7 @@
 
 import ComposableArchitecture
 import Foundation
+import RealmSwift
 
 @Reducer
 struct SearchFeature {
@@ -20,7 +21,8 @@ struct SearchFeature {
         var cursor: String? = nil
         var hasMorePages: Bool = true
         var isSearching: Bool = false
-        var recentSearches: [String] = []
+        var recentSearches: [FeedRecentWord] = []
+        var isLoadingRecentSearches: Bool = false
 
         @PresentationState var searchResult: SearchResultFeature.State?
     }
@@ -38,6 +40,7 @@ struct SearchFeature {
         case cancelButtonTapped
         case recentSearchTapped(String)
         case deleteRecentSearch(String)
+        case recentSearchesLoaded([FeedRecentWord])
         case searchResult(PresentationAction<SearchResultFeature.Action>)
     }
 
@@ -65,13 +68,47 @@ struct SearchFeature {
                     return .none
                 }
 
-                // TODO: Realm을 사용해서 최근 검색어 저장
+                let trimmedKeyword = state.searchText.trimmingCharacters(in: .whitespaces)
 
                 // 검색 결과 화면으로 이동
                 state.searchResult = SearchResultFeature.State(searchQuery: state.searchText)
 
-                // TODO: 실제 검색 API 호출
-                return .none
+                // Realm에 최근 검색어 저장
+                return .run { send in
+                    await MainActor.run {
+                        do {
+                            let realm = try Realm()
+
+                            // 기존에 같은 키워드가 있으면 삭제
+                            if let existingWord = realm.objects(FeedRecentWordDTO.self)
+                                .filter("keyword == %@", trimmedKeyword)
+                                .first {
+                                try realm.write {
+                                    realm.delete(existingWord)
+                                }
+                            }
+
+                            // 새로운 검색어 추가
+                            let newWord = FeedRecentWordDTO(keyword: trimmedKeyword, searchedAt: Date())
+                            try realm.write {
+                                realm.add(newWord)
+                            }
+
+                            // 최근 검색어 목록 갱신
+                            let recentWordDTOs = realm.objects(FeedRecentWordDTO.self)
+                                .sorted(byKeyPath: "searchedAt", ascending: false)
+                            let recentWords = Array(recentWordDTOs.prefix(10).map { $0.toDomain })
+
+                            Task {
+                                send(.recentSearchesLoaded(recentWords))
+                            }
+
+                            // TODO: 실제 검색 API 호출
+                        } catch {
+                            print("최근 검색어 저장 실패: \(error)")
+                        }
+                    }
+                }
 
             case .clearSearch:
                 state.searchText = ""
@@ -79,8 +116,25 @@ struct SearchFeature {
 
             case .searchBarFocused:
                 state.isSearching = true
-                // TODO: Realm에서 최근 검색어 불러오기
-                return .none
+                state.isLoadingRecentSearches = true
+
+                // Realm에서 최근 검색어 불러오기
+                return .run { send in
+                    await MainActor.run {
+                        do {
+                            let realm = try Realm()
+                            let recentWordDTOs = realm.objects(FeedRecentWordDTO.self)
+                                .sorted(byKeyPath: "searchedAt", ascending: false)
+
+                            let recentWords = Array(recentWordDTOs.prefix(10).map { $0.toDomain })
+                            Task {
+                                send(.recentSearchesLoaded(recentWords))
+                            }
+                        } catch {
+                            print("최근 검색어 불러오기 실패: \(error)")
+                        }
+                    }
+                }
 
             case .cancelButtonTapped:
                 state.isSearching = false
@@ -92,8 +146,36 @@ struct SearchFeature {
                 return .send(.search)
 
             case .deleteRecentSearch(let searchText):
-                // TODO: Realm에서 최근 검색어 삭제
-                state.recentSearches.removeAll { $0 == searchText }
+                // Realm에서 최근 검색어 삭제 후 다시 불러오기
+                return .run { send in
+                    await MainActor.run {
+                        do {
+                            let realm = try Realm()
+                            if let wordToDelete = realm.objects(FeedRecentWordDTO.self)
+                                .filter("keyword == %@", searchText)
+                                .first {
+                                try realm.write {
+                                    realm.delete(wordToDelete)
+                                }
+                            }
+
+                            // 삭제 후 최신 10개 다시 불러오기
+                            let recentWordDTOs = realm.objects(FeedRecentWordDTO.self)
+                                .sorted(byKeyPath: "searchedAt", ascending: false)
+                            let recentWords = Array(recentWordDTOs.prefix(10).map { $0.toDomain })
+
+                            Task {
+                                send(.recentSearchesLoaded(recentWords))
+                            }
+                        } catch {
+                            print("최근 검색어 삭제 실패: \(error)")
+                        }
+                    }
+                }
+
+            case .recentSearchesLoaded(let recentWords):
+                state.recentSearches = recentWords
+                state.isLoadingRecentSearches = false
                 return .none
 
             case .postsLoaded(let posts, let nextCursor, let hasMore):

@@ -216,7 +216,14 @@ struct SearchView: View {
     private func recentSearchesView(viewStore: ViewStoreOf<SearchFeature>) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                if viewStore.recentSearches.isEmpty {
+                if viewStore.isLoadingRecentSearches {
+                    VStack(spacing: AppPadding.medium) {
+                        Spacer()
+                        ProgressView()
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                } else if viewStore.recentSearches.isEmpty {
                     VStack(spacing: AppPadding.medium) {
                         Spacer()
                         Text("최근 검색어가 없습니다")
@@ -226,15 +233,9 @@ struct SearchView: View {
                     }
                     .frame(maxWidth: .infinity)
                 } else {
-                    Text("최근 검색어")
-                        .font(.appSubTitle)
-                        .fontWeight(.semibold)
-                        .padding(.horizontal, AppPadding.large)
-                        .padding(.top, AppPadding.medium)
-
                     LazyVStack(spacing: 0) {
-                        ForEach(viewStore.recentSearches, id: \.self) { searchText in
-                            recentSearchRow(searchText: searchText, viewStore: viewStore)
+                        ForEach(viewStore.recentSearches, id: \.id) { recentWord in
+                            recentSearchRow(recentWord: recentWord, viewStore: viewStore)
                         }
                     }
                     .padding(.top, AppPadding.small)
@@ -244,20 +245,20 @@ struct SearchView: View {
     }
 
     // MARK: - 최근 검색어 행
-    private func recentSearchRow(searchText: String, viewStore: ViewStoreOf<SearchFeature>) -> some View {
+    private func recentSearchRow(recentWord: FeedRecentWord, viewStore: ViewStoreOf<SearchFeature>) -> some View {
         HStack(spacing: AppPadding.medium) {
             Text("#")
                 .font(.appBody)
                 .foregroundColor(.secondary)
 
-            Text(searchText)
+            Text(recentWord.keyword)
                 .font(.appBody)
                 .foregroundColor(.primary)
 
             Spacer()
 
             Button {
-                viewStore.send(.deleteRecentSearch(searchText))
+                viewStore.send(.deleteRecentSearch(recentWord.keyword))
             } label: {
                 AppIcon.xmark
                     .foregroundColor(.secondary)
@@ -269,7 +270,7 @@ struct SearchView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             isSearchFieldFocused = false
-            viewStore.send(.recentSearchTapped(searchText))
+            viewStore.send(.recentSearchTapped(recentWord.keyword))
         }
     }
 
