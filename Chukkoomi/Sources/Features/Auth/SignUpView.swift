@@ -255,9 +255,6 @@ struct SignUpView: View {
                 }
             }
             .navigationBarHidden(true)
-            .onDisappear {
-                viewStore.send(.clearFields)
-            }
             .alert("회원가입 성공", isPresented: .constant(viewStore.isSignUpSuccessful)) {
                 Button("확인") {
                     dismiss()
