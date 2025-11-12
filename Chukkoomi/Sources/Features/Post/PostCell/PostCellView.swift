@@ -167,7 +167,7 @@ struct PostCellView: View {
         store: Store(
             initialState: PostCellFeature.State(
                 post: Post(
-                    teams: .total,
+                    teams: .all,
                     title: "테스트 게시글",
                     price: 0,
                     content: "내용",

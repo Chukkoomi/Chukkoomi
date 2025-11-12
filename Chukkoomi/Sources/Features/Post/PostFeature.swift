@@ -25,14 +25,14 @@ struct PostFeature {
             // 목업 데이터
             let mockPosts = [
                 Post(
-                    teams: .total,
+                    teams: .all,
                     title: "즐겁게 이겨 안보면 바보",
                     price: 0,
                     content: "2025시즌 K리그 1 2라운드 리뷰",
                     files: ["mock_image_1"]
                 ),
                 Post(
-                    teams: .total,
+                    teams: .all,
                     title: "2025년 K리그 여름 이적시장 정리",
                     price: 0,
                     content: "여름 이적시장 정리",
