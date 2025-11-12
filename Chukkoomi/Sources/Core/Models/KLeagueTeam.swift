@@ -58,11 +58,11 @@ extension KLeagueTeam {
             englishName: "Suwon City FC",
             logoImageName: "team_suwon_fc"
         ),
-        KLeagueTeam(
+        KLeagueTeam( // 1
             id: "5",
-            koreanName: "수원 삼성 블루윙즈",
+            koreanName: "김천상무 FC",
             englishName: "Suwon Bluewings",
-            logoImageName: "team_suwon_samsung"
+            logoImageName: "team_kimcheon"
         ),
         KLeagueTeam(
             id: "6",
@@ -78,9 +78,9 @@ extension KLeagueTeam {
         ),
         KLeagueTeam(
             id: "8",
-            koreanName: "인천 유나이티드",
+            koreanName: "FC 안양",
             englishName: "Incheon United",
-            logoImageName: "team_incheon"
+            logoImageName: "team_anyang"
         ),
         KLeagueTeam(
             id: "9",
