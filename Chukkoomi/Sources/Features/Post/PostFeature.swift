@@ -8,11 +8,13 @@
 import ComposableArchitecture
 import SwiftUI
 
-struct PostFeature: Reducer {
+@Reducer
+struct PostFeature {
 
     // MARK: - State
+    @ObservableState
     struct State: Equatable {
-        var posts: [Post] = []
+        var postCells: IdentifiedArrayOf<PostCellFeature.State> = []
         var isLoading: Bool = false
 
         init() {
@@ -21,7 +23,7 @@ struct PostFeature: Reducer {
 
         private mutating func loadMockData() {
             // 목업 데이터
-            posts = [
+            let mockPosts = [
                 Post(
                     teams: .total,
                     title: "즐겁게 이겨 안보면 바보",
@@ -37,6 +39,10 @@ struct PostFeature: Reducer {
                     files: ["mock_image_2"]
                 )
             ]
+
+            postCells = IdentifiedArray(
+                uniqueElements: mockPosts.map { PostCellFeature.State(post: $0) }
+            )
         }
     }
 
@@ -44,42 +50,63 @@ struct PostFeature: Reducer {
     enum Action: Equatable {
         case onAppear
         case loadPosts
-        case postTapped(String) // post ID
-        case likeTapped(String) // post ID
-        case commentTapped(String) // post ID
-        case shareTapped(String) // post ID
-        case followTapped(String) // user ID
+        case postCell(IdentifiedActionOf<PostCellFeature>)
     }
 
     // MARK: - Reducer
-    func reduce(into state: inout State, action: Action) -> Effect<Action> {
+    var body: some ReducerOf<Self> {
+        Reduce { state, action in
+            switch action {
+            case .onAppear:
+                return .send(.loadPosts)
+
+            case .loadPosts:
+                // TODO: API 호출
+                print("📱 게시글 로드")
+                return .none
+
+            case let .postCell(.element(id, .delegate(delegateAction))):
+                return handleCellDelegate(id: id, action: delegateAction)
+
+            case .postCell:
+                return .none
+            }
+        }
+        .forEach(\.postCells, action: \.postCell) {
+            PostCellFeature()
+        }
+    }
+
+    // MARK: - Delegate Handler
+    private func handleCellDelegate(id: PostCellFeature.State.ID, action: PostCellFeature.Action.Delegate) -> Effect<Action> {
         switch action {
-        case .onAppear:
-            return .send(.loadPosts)
-
-        case .loadPosts:
-            // TODO: API 호출
-            print("📱 게시글 로드")
-            return .none
-
         case let .postTapped(postId):
             print("📄 게시글 탭: \(postId)")
             return .none
 
-        case let .likeTapped(postId):
+        case let .likePost(postId):
             print("❤️ 좋아요 탭: \(postId)")
+            // TODO: API 호출 - 좋아요 토글
             return .none
 
-        case let .commentTapped(postId):
+        case let .commentPost(postId):
             print("💬 댓글 탭: \(postId)")
+            // TODO: 댓글 화면으로 이동
             return .none
 
-        case let .shareTapped(postId):
+        case let .sharePost(postId):
             print("📤 공유 탭: \(postId)")
+            // TODO: 공유 시트 표시
             return .none
 
-        case let .followTapped(userId):
+        case let .bookmarkPost(postId):
+            print("🔖 북마크 탭: \(postId)")
+            // TODO: API 호출 - 북마크 토글
+            return .none
+
+        case let .followUser(userId):
             print("➕ 팔로우 탭: \(userId)")
+            // TODO: API 호출 - 팔로우 토글
             return .none
         }
     }

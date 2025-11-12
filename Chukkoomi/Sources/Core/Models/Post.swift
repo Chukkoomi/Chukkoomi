@@ -7,8 +7,8 @@
 
 import Foundation
 
-struct Post: Equatable {
-    let id: String?
+struct Post: Identifiable, Equatable {
+    let id: String
     let teams: FootballTeams
     let title: String
     let price: Int
@@ -42,7 +42,7 @@ extension Post {
         files: [String] = [],
         location: GeoLocation = .defaultLocation
     ) {
-        self.id = nil
+        self.id = UUID().uuidString
         self.teams = teams
         self.title = title
         self.price = price
@@ -83,6 +83,7 @@ extension Post {
     }
 }
 
+// 전체팀이랑
 enum FootballTeams: String, CaseIterable {
     case total = "전체"
 }

@@ -26,6 +26,7 @@ enum AppIcon {
     static let chat = Image(systemName: "bubble.left.fill")
     static let profile = Image(systemName: "person")
     static let message = Image(systemName: "ellipsis.message")
+    static let comment = Image(systemName: "ellipsis.message")
     static let share = Image(systemName: "paperplane")
     static let bookmark = Image(systemName: "bookmark")
     static let bookmarkFill = Image(systemName: "bookmark.fill")
