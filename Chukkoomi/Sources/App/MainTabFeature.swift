@@ -50,6 +50,8 @@ struct MainTabFeature {
         
         Scope(state: \.home, action: \.home) {
             HomeFeature()
+        Scope(state: \.search, action: \.search) {
+            SearchFeature()
         }
         
         Scope(state: \.search, action: \.search) {
