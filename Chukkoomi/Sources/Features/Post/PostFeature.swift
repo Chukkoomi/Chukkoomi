@@ -16,41 +16,39 @@ struct PostFeature {
     struct State: Equatable {
         var postCells: IdentifiedArrayOf<PostCellFeature.State> = []
         var isLoading: Bool = false
-
-        init() {
-            self.loadMockData()
-        }
-
-        private mutating func loadMockData() {
-            // 목업 데이터
-            let mockPosts = [
-                Post(
-                    teams: .all,
-                    title: "즐겁게 이겨 안보면 바보",
-                    price: 0,
-                    content: "2025시즌 K리그 1 2라운드 리뷰",
-                    files: ["mock_image_1"]
-                ),
-                Post(
-                    teams: .all,
-                    title: "2025년 K리그 여름 이적시장 정리",
-                    price: 0,
-                    content: "여름 이적시장 정리",
-                    files: ["mock_image_2"]
-                )
-            ]
-
-            postCells = IdentifiedArray(
-                uniqueElements: mockPosts.map { PostCellFeature.State(post: $0) }
-            )
-        }
+        var errorMessage: String?
+        var nextCursor: String?
     }
 
     // MARK: - Action
     enum Action: Equatable {
         case onAppear
         case loadPosts
+        case loadMorePosts
+        case postsResponse(Result<PostListResponseDTO, Error>)
         case postCell(IdentifiedActionOf<PostCellFeature>)
+
+        static func == (lhs: Action, rhs: Action) -> Bool {
+            switch (lhs, rhs) {
+            case (.onAppear, .onAppear),
+                 (.loadPosts, .loadPosts),
+                 (.loadMorePosts, .loadMorePosts):
+                return true
+            case let (.postsResponse(lhsResult), .postsResponse(rhsResult)):
+                switch (lhsResult, rhsResult) {
+                case (.success(let lhsDTO), .success(let rhsDTO)):
+                    return lhsDTO.data.count == rhsDTO.data.count
+                case (.failure, .failure):
+                    return true
+                default:
+                    return false
+                }
+            case let (.postCell(lhsAction), .postCell(rhsAction)):
+                return lhsAction == rhsAction
+            default:
+                return false
+            }
+        }
     }
 
     // MARK: - Reducer
@@ -58,11 +56,78 @@ struct PostFeature {
         Reduce { state, action in
             switch action {
             case .onAppear:
+                guard state.postCells.isEmpty else { return .none }
                 return .send(.loadPosts)
 
             case .loadPosts:
-                // TODO: API 호출
-                print("📱 게시글 로드")
+                state.isLoading = true
+                state.errorMessage = nil
+
+                return .run { send in
+                    do {
+                        let query = PostRouter.ListQuery(
+                            next: nil,
+                            limit: 20,
+                            category: nil  // 전체 카테고리
+                        )
+
+                        let response = try await NetworkManager.shared.performRequest(
+                            PostRouter.fetchPosts(query),
+                            as: PostListResponseDTO.self
+                        )
+
+                        await send(.postsResponse(.success(response)))
+                    } catch {
+                        await send(.postsResponse(.failure(error)))
+                    }
+                }
+
+            case .loadMorePosts:
+                guard !state.isLoading,
+                      let nextCursor = state.nextCursor else {
+                    return .none
+                }
+
+                state.isLoading = true
+
+                return .run { send in
+                    do {
+                        let query = PostRouter.ListQuery(
+                            next: nextCursor,
+                            limit: 20,
+                            category: nil
+                        )
+
+                        let response = try await NetworkManager.shared.performRequest(
+                            PostRouter.fetchPosts(query),
+                            as: PostListResponseDTO.self
+                        )
+
+                        await send(.postsResponse(.success(response)))
+                    } catch {
+                        await send(.postsResponse(.failure(error)))
+                    }
+                }
+
+            case let .postsResponse(.success(response)):
+                state.isLoading = false
+                state.nextCursor = response.nextCursor
+
+                let newPosts = response.data.map { $0.toDomain }
+                let newCells = newPosts.map { PostCellFeature.State(post: $0) }
+
+                // 중복 제거하며 추가
+                for cell in newCells where !state.postCells.contains(where: { $0.id == cell.id }) {
+                    state.postCells.append(cell)
+                }
+
+                print("📱 게시글 \(response.data.count)개 로드 완료 (전체: \(state.postCells.count)개)")
+                return .none
+
+            case let .postsResponse(.failure(error)):
+                state.isLoading = false
+                state.errorMessage = error.localizedDescription
+                print("❌ 게시글 로드 실패: \(error.localizedDescription)")
                 return .none
 
             case let .postCell(.element(id, .delegate(delegateAction))):
