@@ -10,7 +10,7 @@ import Foundation
 
 @Reducer
 struct MainTabFeature {
-
+    
     // MARK: - State
     struct State: Equatable {
         var selectedTab: Tab = .home
@@ -18,7 +18,7 @@ struct MainTabFeature {
         var search = SearchFeature.State()
         var myProfile = MyProfileFeature.State()
         var chatList = ChatListFeature.State()
-
+        
         enum Tab: Equatable, CaseIterable {
             case home
             case search
@@ -27,7 +27,7 @@ struct MainTabFeature {
             case profile
         }
     }
-
+    
     // MARK: - Action
     enum Action: Equatable {
         case tabSelected(State.Tab)
@@ -41,7 +41,7 @@ struct MainTabFeature {
             case logout
         }
     }
-
+    
     // MARK: - Body
     var body: some ReducerOf<Self> {
         Scope(state: \.search, action: \.search) {
