@@ -159,38 +159,11 @@ struct SearchView: View {
 
     // MARK: - 게시물 아이템
     private func postItem(post: SearchFeature.PostItem, width: CGFloat, height: CGFloat, viewStore: ViewStoreOf<SearchFeature>) -> some View {
-        ZStack {
-            if let imageData = post.imageData,
-               let uiImage = UIImage(data: imageData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: width, height: height)
-                    .clipped()
-            } else {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: width, height: height)
-                    .overlay {
-                        ProgressView()
-                    }
-            }
-
-            // 동영상 아이콘
-            if post.isVideo {
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        AppIcon.videoCircle
-                            .foregroundColor(.white)
-                            .font(.system(size: width > 150 ? 30 : 20))
-                            .padding(8)
-                    }
-                }
-            }
-        }
-        .frame(width: width, height: height)
+        AsyncMediaImageView(
+            imagePath: post.imagePath,
+            width: width,
+            height: height
+        )
         .onTapGesture {
             viewStore.send(.postTapped(post.id))
         }

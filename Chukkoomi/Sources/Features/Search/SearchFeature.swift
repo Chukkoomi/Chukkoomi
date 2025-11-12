@@ -25,7 +25,6 @@ struct SearchFeature {
         case search
         case clearSearch
         case postsLoaded([PostItem])
-        case imageDownloaded(id: String, data: Data)
         case postTapped(String)
     }
 
@@ -34,24 +33,14 @@ struct SearchFeature {
         Reduce { state, action in
             switch action {
             case .onAppear:
-                state.isLoading = true
-
                 // 임시 picsum 이미지 데이터 생성
                 let dummyPosts = (1...30).map { index in
                     PostItem(id: "\(index)", imagePath: "https://picsum.photos/400/400?random=\(index)")
                 }
 
-                return .run { send in
-                    await send(.postsLoaded(dummyPosts))
-
-                    // 각 이미지 다운로드
-                    for post in dummyPosts {
-                        if let url = URL(string: post.imagePath),
-                           let data = try? Data(contentsOf: url) {
-                            await send(.imageDownloaded(id: post.id, data: data))
-                        }
-                    }
-                }
+                state.posts = dummyPosts
+                state.isLoading = false
+                return .none
 
             case .searchTextChanged(let text):
                 state.searchText = text
@@ -68,12 +57,6 @@ struct SearchFeature {
             case .postsLoaded(let posts):
                 state.posts = posts
                 state.isLoading = false
-                return .none
-
-            case .imageDownloaded(let id, let data):
-                if let index = state.posts.firstIndex(where: { $0.id == id }) {
-                    state.posts[index].imageData = data
-                }
                 return .none
 
             case .postTapped:

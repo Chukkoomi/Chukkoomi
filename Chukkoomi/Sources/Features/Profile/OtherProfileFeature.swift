@@ -18,7 +18,6 @@ struct OtherProfileFeature {
         var profile: Profile?
         var postImages: [PostImage] = []
         var isLoading: Bool = false
-        var profileImageData: Data?
         var isFollowing: Bool = false
 
         @PresentationState var followList: FollowListFeature.State?
@@ -57,14 +56,10 @@ struct OtherProfileFeature {
         case myProfileLoaded(Profile)
         case profileLoaded(Profile)
         case postImagesLoaded([PostImage])
-        case profileImageLoaded(Data)
         case followToggled(Bool)
-        case postImageDownloaded(id: String, data: Data, isVideo: Bool)
 
         // 게시물 fetch
         case fetchPosts(postIds: [String])
-        case fetchProfileImage(path: String)
-        case fetchPostImage(id: String, path: String, isVideo: Bool)
 
         // Navigation
         case followList(PresentationAction<FollowListFeature.Action>)
@@ -150,26 +145,10 @@ struct OtherProfileFeature {
                 state.isFollowing = profile.followers.contains { $0.userId == myUser.userId }
             }
 
-            // 프로필 이미지와 게시물 fetch
-            if let imagePath = profile.profileImage {
-                return .merge(
-                    .send(.fetchProfileImage(path: imagePath)),
-                    .send(.fetchPosts(postIds: profile.posts))
-                )
-            } else {
-                return .send(.fetchPosts(postIds: profile.posts))
-            }
+            return .send(.fetchPosts(postIds: profile.posts))
 
         case .postImagesLoaded(let images):
             state.postImages = images
-            // 각 이미지 다운로드
-            let effects = images.map { image in
-                Effect<Action>.send(.fetchPostImage(id: image.id, path: image.imagePath, isVideo: image.isVideo))
-            }
-            return .merge(effects)
-
-        case .profileImageLoaded(let data):
-            state.profileImageData = data
             return .none
 
         case .followToggled(let isFollowing):
@@ -194,45 +173,6 @@ struct OtherProfileFeature {
 
             return .none
 
-        case .postImageDownloaded(let id, let data, let isVideo):
-            if let index = state.postImages.firstIndex(where: { $0.id == id }) {
-                if isVideo {
-                    // 동영상이면 썸네일 추출
-                    return .run { send in
-                        if let thumbnailData = await VideoThumbnailHelper.generateThumbnail(from: data) {
-                            await send(.postImageDownloaded(id: id, data: thumbnailData, isVideo: false))
-                        }
-                    }
-                } else {
-                    state.postImages[index].imageData = data
-                }
-            }
-            return .none
-
-        case .fetchProfileImage(let path):
-            return .run { send in
-                do {
-                    let imageData = try await NetworkManager.shared.download(
-                        MediaRouter.getData(path: path)
-                    )
-                    await send(.profileImageLoaded(imageData))
-                } catch {
-                    print("프로필 이미지 로드 실패: \(error)")
-                }
-            }
-
-        case .fetchPostImage(let id, let path, let isVideo):
-            return .run { send in
-                do {
-                    let mediaData = try await NetworkManager.shared.download(
-                        MediaRouter.getData(path: path)
-                    )
-                    await send(.postImageDownloaded(id: id, data: mediaData, isVideo: isVideo))
-                } catch {
-                    print("게시글 미디어 로드 실패: \(error)")
-                }
-            }
-
         case .fetchPosts(let postIds):
             // TODO: postIds로 게시물 데이터 fetch 후 PostImage 배열로 변환
             return .none
@@ -253,13 +193,11 @@ extension OtherProfileFeature {
     struct PostImage: Equatable, Identifiable {
         let id: String
         let imagePath: String
-        var imageData: Data?
         let isVideo: Bool
 
-        init(id: String, imagePath: String, imageData: Data? = nil) {
+        init(id: String, imagePath: String) {
             self.id = id
             self.imagePath = imagePath
-            self.imageData = imageData
             self.isVideo = MediaTypeHelper.isVideoPath(imagePath)
         }
     }
