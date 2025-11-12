@@ -7,8 +7,6 @@
 
 import Foundation
 
-import Foundation
-
 struct Post {
     let id: String?
     let teams: FootballTeams
