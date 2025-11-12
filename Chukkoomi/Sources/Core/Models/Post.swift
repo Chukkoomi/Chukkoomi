@@ -7,7 +7,7 @@
 
 import Foundation
 
-struct Post {
+struct Post: Equatable {
     let id: String?
     let teams: FootballTeams
     let title: String
@@ -25,6 +25,10 @@ struct Post {
     let commentCount: Int?
     let location: GeoLocation
     let distance: Double?
+
+    static func == (lhs: Post, rhs: Post) -> Bool {
+        lhs.id == rhs.id
+    }
 }
 
 extension Post {
@@ -83,10 +87,10 @@ enum FootballTeams: String, CaseIterable {
     case total = "전체"
 }
 
-struct GeoLocation {
+struct GeoLocation: Equatable {
     let longitude: Double
     let latitude: Double
-    
+
     static let defaultLocation = GeoLocation(
         longitude: 126.886417,
         latitude: 37.517682
