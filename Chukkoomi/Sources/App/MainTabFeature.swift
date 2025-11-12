@@ -93,6 +93,9 @@ struct MainTabFeature {
 
             case .delegate:
                 return .none
+
+            case .chatList:
+                return .none
             }
         }
     }
