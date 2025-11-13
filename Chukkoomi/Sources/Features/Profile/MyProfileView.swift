@@ -58,24 +58,26 @@ struct MyProfileView: View {
     private func profileHeaderSection(viewStore: ViewStoreOf<MyProfileFeature>) -> some View {
         VStack(spacing: 0) {
             // 프로필 이미지
-            Group {
-                if let imageData = viewStore.profileImageData,
-                   let uiImage = UIImage(data: imageData) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFill()
-                } else {
-                    Circle()
-                        .fill(Color.gray.opacity(0.3))
-                        .overlay {
-                            AppIcon.personFill
-                                .foregroundColor(.gray)
-                                .font(.system(size: 40))
-                        }
-                }
+            if let profileImagePath = viewStore.profile?.profileImage {
+                AsyncMediaImageView(
+                    imagePath: profileImagePath,
+                    width: 80,
+                    height: 80,
+                    onImageLoaded: { data in
+                        viewStore.send(.profileImageLoaded(data))
+                    }
+                )
+                .clipShape(Circle())
+            } else {
+                Circle()
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 80, height: 80)
+                    .overlay {
+                        AppIcon.personFill
+                            .foregroundColor(.gray)
+                            .font(.system(size: 40))
+                    }
             }
-            .frame(width: 80, height: 80)
-            .clipShape(Circle())
 
             // 닉네임
             Text(viewStore.nickname)
@@ -208,37 +210,11 @@ struct MyProfileView: View {
 
     private func postGridItem(postImage: MyProfileFeature.PostImage) -> some View {
         GeometryReader { geometry in
-            ZStack {
-                if let imageData = postImage.imageData,
-                   let uiImage = UIImage(data: imageData) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: geometry.size.width, height: geometry.size.width)
-                        .clipped()
-                } else {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: geometry.size.width, height: geometry.size.width)
-                        .overlay {
-                            ProgressView()
-                        }
-                }
-
-                // 동영상 아이콘
-                if postImage.isVideo {
-                    VStack {
-                        Spacer()
-                        HStack {
-                            Spacer()
-                            AppIcon.videoCircle
-                                .foregroundColor(.white)
-                                .font(.system(size: 20))
-                                .padding(8)
-                        }
-                    }
-                }
-            }
+            AsyncMediaImageView(
+                imagePath: postImage.imagePath,
+                width: geometry.size.width,
+                height: geometry.size.width
+            )
         }
         .aspectRatio(1, contentMode: .fit)
     }
