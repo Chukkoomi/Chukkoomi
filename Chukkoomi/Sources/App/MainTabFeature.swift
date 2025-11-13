@@ -50,8 +50,6 @@ struct MainTabFeature {
         
         Scope(state: \.home, action: \.home) {
             HomeFeature()
-        Scope(state: \.search, action: \.search) {
-            SearchFeature()
         }
         
         Scope(state: \.search, action: \.search) {
@@ -79,22 +77,13 @@ struct MainTabFeature {
             case .search:
                 return .none
 
-            case .search:
-                return .none
-
             case .myProfile(.logoutCompleted):
                 return .send(.delegate(.logout))
-
-            case .myProfile:
-                return .none
 
             case .chatList:
                 return .none
 
             case .delegate:
-                return .none
-
-            case .chatList:
                 return .none
             }
         }
