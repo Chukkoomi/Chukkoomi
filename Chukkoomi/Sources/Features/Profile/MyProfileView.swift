@@ -131,17 +131,21 @@ struct MyProfileView: View {
 
     // MARK: - 프로필 수정 버튼
     private func editProfileButton(viewStore: ViewStoreOf<MyProfileFeature>) -> some View {
-        Button {
+        FillButton(title: "프로필 수정") {
             viewStore.send(.editProfileButtonTapped)
-        } label: {
-            Text("프로필 수정")
-                .font(.appBody)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 36)
-                .background(AppColor.primary)
-                .customRadius(.small)
         }
+        .frame(maxWidth: .infinity)
+//        Button {
+//            viewStore.send(.editProfileButtonTapped)
+//        } label: {
+//            Text("프로필 수정")
+//                .font(.appBody)
+//                .foregroundStyle(.white)
+//                .frame(maxWidth: .infinity)
+//                .frame(height: 36)
+//                .background(AppColor.primary)
+//                .customRadius(.small)
+//        }
     }
 
     // MARK: - 탭 선택

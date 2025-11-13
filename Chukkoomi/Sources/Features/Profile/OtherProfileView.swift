@@ -88,36 +88,19 @@ struct OtherProfileView: View {
     private func actionButtons(viewStore: ViewStoreOf<OtherProfileFeature>) -> some View {
         HStack(spacing: AppPadding.large) {
             // 팔로우 버튼
-            Button {
-                viewStore.send(.followButtonTapped)
-            } label: {
-                Text(viewStore.isFollowing ? "팔로잉" : "팔로우")
-                    .font(.appBody)
-                    .foregroundColor(viewStore.isFollowing ? .primary : .white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 36)
-                    .background(viewStore.isFollowing ? .clear : AppColor.primary)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppCornerRadius.small.rawValue)
-                            .stroke(viewStore.isFollowing ? AppColor.divider : .clear, lineWidth: 1)
-                    )
-                    .customRadius(.small)
+            if viewStore.isFollowing {
+                BorderButton(title: "팔로잉") {
+                    viewStore.send(.followButtonTapped)
+                }
+            } else {
+                FillButton(title: "팔로우") {
+                    viewStore.send(.followButtonTapped)
+                }
             }
 
-            // 메시지 버튼
-            Button {
+            // 메세지 버튼
+            BorderButton(title: "메세지") {
                 viewStore.send(.messageButtonTapped)
-            } label: {
-                Text("메시지")
-                    .font(.appBody)
-                    .foregroundColor(.primary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 36)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppCornerRadius.small.rawValue)
-                            .stroke(AppColor.divider, lineWidth: 1)
-                    )
-                    .customRadius(.small)
             }
         }
     }

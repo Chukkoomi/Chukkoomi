@@ -102,7 +102,7 @@ struct EditProfileView: View {
             .padding()
             .background(Color.white)
             .overlay(
-                RoundedRectangle(cornerRadius: AppCornerRadius.small.rawValue)
+                RoundedRectangle(cornerRadius: 8)
                     .stroke(AppColor.divider, lineWidth: 1)
             )
 
@@ -134,7 +134,7 @@ struct EditProfileView: View {
             .padding()
             .background(Color.white)
             .overlay(
-                RoundedRectangle(cornerRadius: AppCornerRadius.small.rawValue)
+                RoundedRectangle(cornerRadius: 8)
                     .stroke(AppColor.divider, lineWidth: 1)
             )
 
@@ -171,7 +171,7 @@ struct EditProfileView: View {
         }
         .background(viewStore.canSave ? AppColor.primary : AppColor.disabled)
         .disabled(!viewStore.canSave || viewStore.isLoading)
-        .customRadius(.small)
+        .customRadius()
         .padding(.horizontal, AppPadding.large)
         .padding(.bottom, AppPadding.large)
     }
