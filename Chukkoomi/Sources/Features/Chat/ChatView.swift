@@ -1,0 +1,190 @@
+//
+//  ChatView.swift
+//  Chukkoomi
+//
+//  Created by 서지민 on 11/12/25.
+//
+
+import SwiftUI
+import ComposableArchitecture
+
+struct ChatView: View {
+
+    let store: StoreOf<ChatFeature>
+
+    var body: some View {
+        WithViewStore(store, observe: { $0 }) { viewStore in
+            VStack(spacing: 0) {
+                // onAppear 트리거용 투명 뷰
+                Color.clear
+                    .frame(height: 0)
+                    .onAppear {
+                        viewStore.send(.onAppear)
+                    }
+
+                // 메시지 리스트
+                ScrollViewReader { scrollProxy in
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            // 페이지네이션 로딩 인디케이터
+                            if viewStore.isLoading && viewStore.cursorDate != nil {
+                                ProgressView()
+                                    .padding(.vertical, 8)
+                            }
+
+                            // 메시지 목록
+                            ForEach(viewStore.messages, id: \.chatId) { message in
+                                MessageRow(
+                                    message: message,
+                                    isMyMessage: isMyMessage(message, myUserId: viewStore.myUserId)
+                                )
+                                .id(message.chatId)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    }
+                    .onChange(of: viewStore.messages.count) { _ in
+                        // 새 메시지가 추가되면 스크롤을 최하단으로
+                        if let lastMessage = viewStore.messages.last {
+                            withAnimation {
+                                scrollProxy.scrollTo(lastMessage.chatId, anchor: .bottom)
+                            }
+                        }
+                    }
+                    .onAppear {
+                        // 초기 로드 후 스크롤을 최하단으로
+                        if let lastMessage = viewStore.messages.last {
+                            scrollProxy.scrollTo(lastMessage.chatId, anchor: .bottom)
+                        }
+                    }
+                }
+
+                Divider()
+
+                // 메시지 입력창
+                HStack(spacing: 12) {
+                    TextField("메시지를 입력하세요", text: viewStore.binding(
+                        get: \.messageText,
+                        send: { .messageTextChanged($0) }
+                    ))
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(20)
+
+                    Button(action: {
+                        viewStore.send(.sendMessageTapped)
+                    }) {
+                        Image(systemName: "paperplane.fill")
+                            .foregroundColor(viewStore.messageText.isEmpty ? .gray : .blue)
+                            .font(.system(size: 20))
+                    }
+                    .disabled(viewStore.messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewStore.isSending)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            }
+            .navigationTitle(opponentNickname(chatRoom: viewStore.chatRoom, myUserId: viewStore.myUserId))
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    // 현재 사용자의 메시지인지 확인
+    private func isMyMessage(_ message: ChatMessage, myUserId: String?) -> Bool {
+        guard let myUserId = myUserId else {
+            return false
+        }
+        return message.sender.userId == myUserId
+    }
+
+    // 상대방 닉네임 추출
+    private func opponentNickname(chatRoom: ChatRoom, myUserId: String?) -> String {
+        guard let myUserId = myUserId else {
+            return chatRoom.participants.first?.nick ?? "채팅"
+        }
+
+        // 내가 아닌 participant 찾기
+        let opponent = chatRoom.participants.first { $0.userId != myUserId }
+        return opponent?.nick ?? "채팅"
+    }
+}
+
+// MARK: - 메시지 Row
+struct MessageRow: View {
+
+    let message: ChatMessage
+    let isMyMessage: Bool
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            if isMyMessage {
+                Spacer(minLength: 60)
+
+                // 내 메시지: 시간이 왼쪽
+                Text(DateFormatters.formatChatMessageTime(message.createdAt))
+                    .font(.system(size: 11))
+                    .foregroundColor(.gray)
+
+                messageContent
+            } else {
+                // 상대방 프로필 이미지
+                Circle()
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 36, height: 36)
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(.gray)
+                    )
+
+                messageContent
+
+                // 받은 메시지: 시간이 오른쪽
+                Text(DateFormatters.formatChatMessageTime(message.createdAt))
+                    .font(.system(size: 11))
+                    .foregroundColor(.gray)
+
+                Spacer(minLength: 60)
+            }
+        }
+    }
+
+    // 메시지 내용 부분
+    private var messageContent: some View {
+        VStack(alignment: isMyMessage ? .trailing : .leading, spacing: 4) {
+            // 메시지 내용
+            if let content = message.content, !content.isEmpty {
+                Text(content)
+                    .font(.system(size: 15))
+                    .foregroundColor(isMyMessage ? .white : .primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(isMyMessage ? Color.blue : Color.gray.opacity(0.2))
+                    .cornerRadius(16)
+            }
+
+            // 이미지 파일
+            if !message.files.isEmpty {
+                ForEach(message.files, id: \.self) { fileUrl in
+                    AsyncImage(url: URL(string: fileUrl)) { image in
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(maxWidth: 200, maxHeight: 200)
+                            .cornerRadius(12)
+                    } placeholder: {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(width: 200, height: 200)
+                            .cornerRadius(12)
+                            .overlay(
+                                ProgressView()
+                            )
+                    }
+                }
+            }
+        }
+    }
+}
