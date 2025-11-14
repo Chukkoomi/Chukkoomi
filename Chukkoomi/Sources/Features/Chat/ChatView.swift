@@ -44,7 +44,7 @@ struct ChatView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
                     }
-                    .onChange(of: viewStore.messages.count) { _ in
+                    .onChange(of: viewStore.messages.count) {
                         // 새 메시지가 추가되면 스크롤을 최하단으로
                         if let lastMessage = viewStore.messages.last {
                             withAnimation {
