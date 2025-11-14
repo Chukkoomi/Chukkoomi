@@ -85,7 +85,7 @@ struct MyProfileView: View {
                     .frame(width: 100, height: 100)
                     .overlay {
                         AppIcon.personFill
-                            .foregroundColor(.gray)
+                            .foregroundStyle(.gray)
                             .font(.system(size: 50))
                     }
             }
@@ -128,10 +128,10 @@ struct MyProfileView: View {
             VStack(spacing: AppPadding.small / 2) {
                 Text(title)
                     .font(.appCaption)
-                    .foregroundColor(AppColor.textSecondary)
+                    .foregroundStyle(AppColor.textSecondary)
                 Text("\(count)")
                     .font(.appSubTitle)
-                    .foregroundColor(.black)
+                    .foregroundStyle(.black)
             }
             .frame(maxWidth: .infinity)
         }
@@ -158,7 +158,7 @@ struct MyProfileView: View {
                         Text(tab.rawValue)
                             .font(.appBody)
                             .fontWeight(viewStore.selectedTab == tab ? .semibold : .regular)
-                            .foregroundColor(viewStore.selectedTab == tab ? .black : AppColor.textSecondary)
+                            .foregroundStyle(viewStore.selectedTab == tab ? .black : AppColor.textSecondary)
 
                         if viewStore.selectedTab == tab {
                             Rectangle()
@@ -190,7 +190,7 @@ struct MyProfileView: View {
                 VStack(spacing: AppPadding.medium) {
                     Text("북마크한 게시글이 없습니다.")
                         .font(.appSubTitle)
-                        .foregroundColor(AppColor.textSecondary)
+                        .foregroundStyle(AppColor.textSecondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -233,7 +233,7 @@ struct MyProfileView: View {
                     .frame(width: geometry.size.width, height: geometry.size.width)
                     .overlay {
                         AppIcon.plus
-                            .foregroundColor(.white)
+                            .foregroundStyle(.white)
                             .font(.system(size: 30))
                     }
             }

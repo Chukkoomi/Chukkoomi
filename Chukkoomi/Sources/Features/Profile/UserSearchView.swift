@@ -57,7 +57,7 @@ struct UserSearchView: View {
                 Spacer()
                 Text("검색 결과가 없습니다")
                     .font(.appBody)
-                    .foregroundColor(AppColor.textSecondary)
+                    .foregroundStyle(AppColor.textSecondary)
                 Spacer()
             } else if !viewStore.searchResults.isEmpty {
                 ScrollView {
@@ -99,7 +99,7 @@ struct UserSearchView: View {
                     .frame(width: 50, height: 50)
                     .overlay {
                         AppIcon.personFill
-                            .foregroundColor(.gray)
+                            .foregroundStyle(.gray)
                             .font(.system(size: 24))
                     }
             }
@@ -107,7 +107,7 @@ struct UserSearchView: View {
             // 닉네임
             Text(result.user.nickname)
                 .font(.appBody)
-                .foregroundColor(.black)
+                .foregroundStyle(.black)
 
             Spacer()
         }
