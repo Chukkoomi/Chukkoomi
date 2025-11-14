@@ -15,11 +15,6 @@ struct ChatListView: View {
     var body: some View {
         WithViewStore(store, observe: { $0 }) { viewStore in
             VStack(spacing: 0) {
-                    // 상단 타이틀
-                    Text("채팅")
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
 
                     // 채팅방 리스트
                     if viewStore.isLoading {
@@ -52,10 +47,26 @@ struct ChatListView: View {
                         }
                     }
             }
+            .navigationTitle("채팅")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        viewStore.send(.userSearchButtonTapped)
+                    } label: {
+                        AppIcon.searchUser
+                    }
+                }
+            }
             .navigationDestination(
                 store: store.scope(state: \.$chat, action: \.chat)
             ) { chatStore in
                 ChatView(store: chatStore)
+            }
+            .navigationDestination(
+                store: store.scope(state: \.$userSearch, action: \.userSearch)
+            ) { userSearchStore in
+                UserSearchView(store: userSearchStore)
             }
             .onAppear {
                 viewStore.send(.onAppear)
@@ -87,12 +98,12 @@ struct ChatRoomRow: View {
                 HStack(spacing: 6) {
                     if isMyself {
                         Circle()
-                            .fill(Color.yellow)
+                            .fill(AppColor.disabled)
                             .frame(width: 22, height: 22)
                             .overlay(
                                 Text("나")
                                     .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.black)
+                                    .foregroundColor(.white)
                             )
                     }
 

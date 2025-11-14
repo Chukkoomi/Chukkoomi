@@ -16,6 +16,7 @@ struct ChatListFeature: Reducer {
         var isLoading: Bool = false
         var myUserId: String?
         @PresentationState var chat: ChatFeature.State?
+        @PresentationState var userSearch: UserSearchFeature.State?
     }
 
     // MARK: - Action
@@ -27,7 +28,9 @@ struct ChatListFeature: Reducer {
         case loadChatRooms
         case chatRoomsLoaded([ChatRoom])
         case chatRoomTapped(ChatRoom)
+        case userSearchButtonTapped
         case chat(PresentationAction<ChatFeature.Action>)
+        case userSearch(PresentationAction<UserSearchFeature.Action>)
     }
 
     // MARK: - Body
@@ -109,10 +112,20 @@ struct ChatListFeature: Reducer {
 
             case .chat:
                 return .none
+
+            case .userSearchButtonTapped:
+                state.userSearch = UserSearchFeature.State()
+                return .none
+
+            case .userSearch:
+                return .none
             }
         }
         .ifLet(\.$chat, action: \.chat) {
             ChatFeature()
+        }
+        .ifLet(\.$userSearch, action: \.userSearch) {
+            UserSearchFeature()
         }
     }
 }

@@ -35,13 +35,6 @@ struct ChatFeature: Reducer {
         case messageSendFailed(String)
     }
 
-    // MARK: - Body
-    var body: some ReducerOf<Self> {
-        Reduce { state, action in
-            self.reduce(into: &state, action: action)
-        }
-    }
-
     // MARK: - Reducer
     func reduce(into state: inout State, action: Action) -> Effect<Action> {
         switch action {
@@ -130,6 +123,12 @@ struct ChatFeature: Reducer {
             state.isSending = false
             // TODO: 에러 알림 표시
             return .none
+        }
+    }
+
+    var body: some ReducerOf<Self> {
+        Reduce { state, action in
+            self.reduce(into: &state, action: action)
         }
     }
 }
