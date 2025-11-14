@@ -68,6 +68,9 @@ struct AppFeature {
             case .login:
                 return .none
 
+            case .mainTab(.delegate(.logout)):
+                return .send(.logout)
+
             case .mainTab:
                 return .none
 
@@ -79,6 +82,9 @@ struct AppFeature {
 
                 // Keychain 토큰 삭제
                 KeychainManager.shared.deleteAll()
+
+                // UserDefaults userId 삭제
+                UserDefaultsHelper.userId = nil
 
                 return .none
             }

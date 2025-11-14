@@ -38,6 +38,14 @@ struct MyProfileView: View {
             .navigationTitle("프로필")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        viewStore.send(.settingsButtonTapped)
+                    } label: {
+                        AppIcon.ellipsis
+                    }
+                }
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         viewStore.send(.searchButtonTapped)
@@ -46,6 +54,9 @@ struct MyProfileView: View {
                     }
                 }
             }
+            .confirmationDialog(
+                store: store.scope(state: \.$settingsMenu, action: \.settingsMenu)
+            )
             .onAppear {
                 viewStore.send(.onAppear)
             }
