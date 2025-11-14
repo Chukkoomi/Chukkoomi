@@ -38,7 +38,10 @@ struct UserSearchView: View {
             }
             .navigationTitle("유저 검색")
             .navigationBarTitleDisplayMode(.inline)
-            // 이 파일 전용 네비게이션 연결
+            .onAppear {
+                isSearchFieldFocused = true
+            }
+            // 네비게이션 연결
             .modifier(UserSearchNavigation(store: store))
         }
     }
@@ -54,7 +57,7 @@ struct UserSearchView: View {
                 Spacer()
                 Text("검색 결과가 없습니다")
                     .font(.appBody)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(AppColor.textSecondary)
                 Spacer()
             } else if !viewStore.searchResults.isEmpty {
                 ScrollView {
@@ -104,8 +107,7 @@ struct UserSearchView: View {
             // 닉네임
             Text(result.user.nickname)
                 .font(.appBody)
-                .fontWeight(.semibold)
-                .foregroundColor(.primary)
+                .foregroundColor(.black)
 
             Spacer()
         }

@@ -53,7 +53,7 @@ struct FollowListView: View {
                 Spacer()
                 Text(viewStore.searchText.isEmpty ? "목록이 비어있습니다" : "검색 결과가 없습니다")
                     .font(.appBody)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(AppColor.textSecondary)
                 Spacer()
             } else {
                 ScrollView {
@@ -101,8 +101,7 @@ struct FollowListView: View {
             // 닉네임
             Text(userItem.user.nickname)
                 .font(.appBody)
-                .fontWeight(.semibold)
-                .foregroundColor(.primary)
+                .foregroundColor(.black)
 
             Spacer()
         }

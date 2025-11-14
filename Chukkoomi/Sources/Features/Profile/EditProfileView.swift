@@ -41,6 +41,7 @@ struct EditProfileView: View {
             }
             .navigationTitle("프로필 수정")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .tabBar)
             // 네비게이션 연결
             .modifier(EditProfileNavigation(store: store))
         }

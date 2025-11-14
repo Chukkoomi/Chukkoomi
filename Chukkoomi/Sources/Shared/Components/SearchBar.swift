@@ -17,7 +17,7 @@ struct SearchBar: View {
     var body: some View {
         HStack(spacing: AppPadding.small) {
             AppIcon.search
-                .foregroundColor(.secondary)
+                .foregroundColor(AppColor.textSecondary)
 
             TextField(placeholder, text: $text)
                 .focused($isFocused)
@@ -32,7 +32,7 @@ struct SearchBar: View {
                     onClear()
                 } label: {
                     AppIcon.xmarkCircleFill
-                        .foregroundColor(.secondary)
+                        .foregroundColor(AppColor.textSecondary)
                 }
             }
         }
@@ -44,5 +44,6 @@ struct SearchBar: View {
             Capsule()
                 .stroke(AppColor.divider, lineWidth: 1)
         )
+        .frame(height: 40)
     }
 }

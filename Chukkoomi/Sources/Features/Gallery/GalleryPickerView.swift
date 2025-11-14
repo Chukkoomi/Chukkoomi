@@ -23,7 +23,7 @@ struct GalleryPickerView: View {
                     Text("최근 항목")
                         .font(.appBody)
                         .fontWeight(.semibold)
-                        .foregroundColor(.primary)
+                        .foregroundColor(.black)
                     Spacer()
                 }
                 .padding(.horizontal, AppPadding.large)
@@ -37,6 +37,7 @@ struct GalleryPickerView: View {
                     Spacer()
                 } else {
                     mediaGrid(viewStore: viewStore)
+                        .padding(.horizontal, 4)
                 }
             }
             .background(Color(uiColor: .systemBackground))
@@ -50,7 +51,7 @@ struct GalleryPickerView: View {
                         viewStore.send(.cancel)
                     } label: {
                         AppIcon.xmark
-                            .foregroundColor(.primary)
+                            .foregroundColor(.black)
                     }
                 }
 
@@ -59,7 +60,7 @@ struct GalleryPickerView: View {
                         viewStore.send(.confirmSelection)
                     } label: {
                         Text(viewStore.pickerMode.buttonTitle)
-                            .foregroundColor(viewStore.selectedItem != nil ? .primary : .gray)
+                            .foregroundColor(viewStore.selectedItem != nil ? .black : .gray)
                     }
                     .disabled(viewStore.selectedItem == nil)
                 }
