@@ -15,4 +15,6 @@ enum AppPadding {
     static let medium: CGFloat = 12
     /// 섹션 내 컴포넌트 패딩
     static let small: CGFloat = 8
+    /// 화면 최하단 패딩
+    static let bottom: CGFloat = 20
 }

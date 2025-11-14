@@ -15,18 +15,16 @@ struct EditProfileView: View {
         WithViewStore(store, observe: { $0 }) { viewStore in
             VStack(spacing: 0) {
                 ScrollView {
-                    VStack(spacing: 0) {
+                    VStack(spacing: AppPadding.large) {
                         // 프로필 이미지
                         profileImageSection(viewStore: viewStore)
-                            .padding(.top, AppPadding.large)
-
+                            .padding(.bottom, 20)
+                        
                         // 닉네임 입력
                         nicknameSection(viewStore: viewStore)
-                            .padding(.top, AppPadding.large)
 
                         // 소개 문구 입력
                         introduceSection(viewStore: viewStore)
-                            .padding(.top, AppPadding.medium)
                     }
                     .padding(.horizontal, AppPadding.large)
                 }
@@ -93,62 +91,26 @@ struct EditProfileView: View {
 
     // MARK: - 닉네임 섹션
     private func nicknameSection(viewStore: ViewStoreOf<EditProfileFeature>) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            TextField("닉네임을 입력하세요", text: viewStore.binding(
+        ValidationTextField(
+            placeholder: "닉네임을 입력하세요",
+            text: viewStore.binding(
                 get: \.nickname,
                 send: { .nicknameChanged($0) }
-            ))
-            .textFieldStyle(.plain)
-            .padding()
-            .background(Color.white)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(AppColor.divider, lineWidth: 1)
-            )
-
-            Group {
-                if viewStore.nickname.isEmpty {
-                    Text("닉네임을 입력해주세요")
-                } else if !viewStore.isNicknameCharacterValid {
-                    Text("한글, 영문, 숫자만 사용 가능합니다 (특수문자 불가)")
-                } else if !viewStore.isNicknameLengthValid {
-                    Text("닉네임은 공백 없이 2~8자여야 합니다")
-                } else {
-                    Text(" ")
-                }
-            }
-            .font(.appCaption)
-            .foregroundColor(.red)
-            .frame(height: 16)
-        }
+            ),
+            validationMessage: viewStore.nicknameValidationMessage
+        )
     }
 
     // MARK: - 소개 문구 섹션
     private func introduceSection(viewStore: ViewStoreOf<EditProfileFeature>) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            TextField("소개를 입력하세요", text: viewStore.binding(
+        ValidationTextField(
+            placeholder: "소개를 입력하세요",
+            text: viewStore.binding(
                 get: \.introduce,
                 send: { .introduceChanged($0) }
-            ))
-            .textFieldStyle(.plain)
-            .padding()
-            .background(Color.white)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(AppColor.divider, lineWidth: 1)
-            )
-
-            Group {
-                if !viewStore.isIntroduceValid {
-                    Text("소개는 20자 이내여야 합니다")
-                } else {
-                    Text(" ")
-                }
-            }
-            .font(.appCaption)
-            .foregroundColor(.red)
-            .frame(height: 16)
-        }
+            ),
+            validationMessage: viewStore.introduceValidationMessage,
+        )
     }
     
     // MARK: - 완료 버튼

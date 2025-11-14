@@ -12,7 +12,6 @@ extension Font {
     
     static var appMain: Font = .system(size: 20, weight: .semibold)
     
-    
     static var appTitle: Font = .system(size: 17, weight: .semibold)
     /// FillButton
     static var appSubTitle: Font = .system(size: 15, weight: .semibold)

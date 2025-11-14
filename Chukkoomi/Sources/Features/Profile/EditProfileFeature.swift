@@ -23,30 +23,31 @@ struct EditProfileFeature {
 
         // Validation
         var isNicknameLengthValid: Bool {
-            let trimmed = nickname.trimmingCharacters(in: .whitespaces)
-            return trimmed.count >= 2 &&
-                   trimmed.count <= 8 &&
-                   !nickname.contains(" ")
+            ValidationHelper.isNicknameLengthValid(nickname)
         }
 
         var isNicknameCharacterValid: Bool {
-            // 한글, 영문, 숫자만 허용
-            let allowedCharacters = CharacterSet.alphanumerics
-                .union(CharacterSet(charactersIn: "가-힣ㄱ-ㅎㅏ-ㅣ"))
-            let nicknameCharacterSet = CharacterSet(charactersIn: nickname)
-            return allowedCharacters.isSuperset(of: nicknameCharacterSet)
+            ValidationHelper.isNicknameCharacterValid(nickname)
         }
 
         var isNicknameValid: Bool {
-            return isNicknameLengthValid && isNicknameCharacterValid
+            ValidationHelper.isNicknameValid(nickname)
         }
 
         var isIntroduceValid: Bool {
-            introduce.count <= 20
+            ValidationHelper.isIntroduceValid(introduce)
         }
 
         var canSave: Bool {
             isNicknameValid && isIntroduceValid
+        }
+
+        var nicknameValidationMessage: String {
+            ValidationHelper.nicknameValidationMessage(nickname)
+        }
+
+        var introduceValidationMessage: String {
+            ValidationHelper.introduceValidationMessage(introduce)
         }
 
         init(profile: Profile, profileImageData: Data? = nil) {
