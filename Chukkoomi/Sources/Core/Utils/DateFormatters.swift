@@ -65,6 +65,65 @@ enum DateFormatters {
     // MARK: - 요일 배열 (재사용)
     private static let weekdays = ["", "일", "월", "화", "수", "목", "금", "토"]
 
+    // MARK: - 채팅방 리스트 날짜 포맷팅
+    /// 채팅방 리스트에서 사용하는 날짜 포맷
+    /// - 오늘: "오전 HH:MM" 또는 "오후 HH:MM"
+    /// - 어제: "어제"
+    /// - 그 이전: "MM월 DD일"
+    static func formatChatListDate(_ dateString: String) -> String {
+        guard let date = parseDate(dateString) else {
+            return ""
+        }
+
+        let now = Date()
+        let todayStart = calendar.startOfDay(for: now)
+        let messageStart = calendar.startOfDay(for: date)
+
+        let daysDifference = calendar.dateComponents([.day], from: messageStart, to: todayStart).day ?? 0
+
+        if daysDifference == 0 {
+            // 오늘: "오전 HH:MM" 형식
+            let components = calendar.dateComponents([.hour, .minute], from: date)
+            guard let hour = components.hour, let minute = components.minute else {
+                return ""
+            }
+
+            let period = hour < 12 ? "오전" : "오후"
+            let displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour)
+
+            return String(format: "%@ %d:%02d", period, displayHour, minute)
+        } else if daysDifference == 1 {
+            // 어제
+            return "어제"
+        } else {
+            // 그 이전: "MM월 DD일"
+            let components = calendar.dateComponents([.month, .day], from: date)
+            guard let month = components.month, let day = components.day else {
+                return ""
+            }
+            return "\(month)월 \(day)일"
+        }
+    }
+
+    // MARK: - 채팅 메시지 시간 포맷팅
+    /// 채팅 메시지에서 사용하는 시간 포맷
+    /// "오전 HH:MM" 또는 "오후 HH:MM" 형식
+    static func formatChatMessageTime(_ dateString: String) -> String {
+        guard let date = parseDate(dateString) else {
+            return ""
+        }
+
+        let components = calendar.dateComponents([.hour, .minute], from: date)
+        guard let hour = components.hour, let minute = components.minute else {
+            return ""
+        }
+
+        let period = hour < 12 ? "오전" : "오후"
+        let displayHour = hour == 0 ? 12 : (hour > 12 ? hour - 12 : hour)
+
+        return String(format: "%@ %d:%02d", period, displayHour, minute)
+    }
+
     // MARK: - 경기 날짜 포맷팅
     /// "11월 11일 (화) 오후 2시" 형식으로 포맷
     static func formatMatchDate(_ date: Date) -> String {
