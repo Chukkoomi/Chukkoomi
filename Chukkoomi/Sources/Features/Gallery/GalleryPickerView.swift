@@ -365,16 +365,3 @@ private struct GalleryPickerNavigation: ViewModifier {
             }
     }
 }
-
-// MARK: - Preview
-//#Preview {
-//    NavigationStack {
-//        GalleryPickerView(
-//            store: Store(
-//                initialState: GalleryPickerFeature.State()
-//            ) {
-//                GalleryPickerFeature()
-//            }
-//        )
-//    }
-//}
