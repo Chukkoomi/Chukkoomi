@@ -22,7 +22,12 @@ struct GalleryPickerFeature {
         var authorizationStatus: PHAuthorizationStatus = .notDetermined
         var isLoading: Bool = false
         var pickerMode: PickerMode = .profileImage
-        var path = StackState<Path.State>()
+        @Presents var editVideo: EditVideoFeature.State?
+        @Presents var editPhoto: EditPhotoState?
+    }
+
+    struct EditPhotoState: Equatable {
+        // EditPhotoView용 임시 state
     }
 
     // MARK: - PickerMode
@@ -60,33 +65,13 @@ struct GalleryPickerFeature {
         case selectedImageLoaded(UIImage)
         case confirmSelection
         case cancel
-        case path(StackActionOf<Path>)
+        case editVideo(PresentationAction<EditVideoFeature.Action>)
+        case editPhoto(PresentationAction<Never>)
         case delegate(Delegate)
 
         enum Delegate: Equatable {
             case didSelectImage(Data)
             case didSelectVideo(PHAsset)
-        }
-    }
-
-    // MARK: - Path
-    @Reducer
-    struct Path {
-        @ObservableState
-        enum State: Equatable {
-            case editVideo(EditVideoFeature.State)
-            case contentView
-        }
-
-        enum Action: Equatable {
-            case editVideo(EditVideoFeature.Action)
-            case contentView
-        }
-
-        var body: some ReducerOf<Self> {
-            Scope(state: \.editVideo, action: \.editVideo) {
-                EditVideoFeature()
-            }
         }
     }
 
@@ -161,15 +146,15 @@ struct GalleryPickerFeature {
                 return .none
 
             case .confirmSelection:
-                // pickerMode가 .post인 경우: path에 추가하여 navigation push
+                // pickerMode가 .post인 경우: navigation push
                 if state.pickerMode == .post {
                     if let selectedItem = state.selectedItem, selectedItem.mediaType == .video {
                         // 동영상 선택 시 EditVideoView로 push
-                        state.path.append(.editVideo(EditVideoFeature.State(videoAsset: selectedItem.asset)))
+                        state.editVideo = EditVideoFeature.State(videoAsset: selectedItem.asset)
                         return .none
                     } else if state.selectedImage != nil {
-                        // 사진 선택 시 ContentView로 push
-                        state.path.append(.contentView)
+                        // 사진 선택 시 EditPhotoView로 push
+                        state.editPhoto = EditPhotoState()
                         return .none
                     }
                     return .none
@@ -191,19 +176,18 @@ struct GalleryPickerFeature {
                     await self.dismiss()
                 }
 
-            case .path(.element(_, .editVideo(.closeButtonTapped))):
-                state.path.removeAll()
+            case .editVideo:
                 return .none
 
-            case .path:
+            case .editPhoto:
                 return .none
 
             case .delegate:
                 return .none
             }
         }
-        .forEach(\.path, action: \.path) {
-            Path()
+        .ifLet(\.$editVideo, action: \.editVideo) {
+            EditVideoFeature()
         }
     }
 

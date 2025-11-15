@@ -69,6 +69,8 @@ struct GalleryPickerView: View {
             .onAppear {
                 viewStore.send(.onAppear)
             }
+            // 네비게이션 연결
+            .modifier(GalleryPickerNavigation(store: store))
         }
     }
 
@@ -342,6 +344,25 @@ struct AssetVideoPlayerView: View {
         player?.pause()
         player = nil
         isLoading = true
+    }
+}
+
+// MARK: - Navigation 구성
+private struct GalleryPickerNavigation: ViewModifier {
+    let store: StoreOf<GalleryPickerFeature>
+
+    func body(content: Content) -> some View {
+        content
+            .navigationDestination(
+                store: store.scope(state: \.$editVideo, action: \.editVideo)
+            ) { store in
+                EditVideoView(store: store)
+            }
+            .navigationDestination(
+                store: store.scope(state: \.$editPhoto, action: \.editPhoto)
+            ) { _ in
+                Text("EditPhotoView 구현 필요")
+            }
     }
 }
 

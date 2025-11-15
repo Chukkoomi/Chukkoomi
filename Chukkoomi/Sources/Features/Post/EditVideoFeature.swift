@@ -24,21 +24,13 @@ struct EditVideoFeature {
     // MARK: - Action
     @CasePathable
     enum Action: Equatable {
-        case closeButtonTapped
         case nextButtonTapped
     }
 
     // MARK: - Body
-    @Dependency(\.dismiss) var dismiss
-
     var body: some ReducerOf<Self> {
         Reduce { state, action in
             switch action {
-            case .closeButtonTapped:
-                return .run { _ in
-                    await self.dismiss()
-                }
-
             case .nextButtonTapped:
                 // TODO: 영상 편집 완료 후 다음 단계로 이동
                 return .none

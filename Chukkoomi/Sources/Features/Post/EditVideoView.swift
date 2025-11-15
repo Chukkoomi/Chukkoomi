@@ -35,15 +35,6 @@ struct EditVideoView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        viewStore.send(.closeButtonTapped)
-                    } label: {
-                        AppIcon.xmark
-                            .foregroundStyle(.black)
-                    }
-                }
-
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         viewStore.send(.nextButtonTapped)
