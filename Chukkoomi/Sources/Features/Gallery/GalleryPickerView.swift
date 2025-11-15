@@ -8,6 +8,7 @@
 import SwiftUI
 import ComposableArchitecture
 import Photos
+import AVKit
 
 struct GalleryPickerView: View {
     let store: StoreOf<GalleryPickerFeature>
@@ -41,7 +42,7 @@ struct GalleryPickerView: View {
                 }
             }
             .background(Color(uiColor: .systemBackground))
-            .navigationTitle("사진 선택")
+            .navigationTitle(viewStore.pickerMode == .profileImage ? "사진 선택" : "미디어 선택")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
@@ -126,16 +127,25 @@ struct GalleryPickerView: View {
                 }
             } else {
                 // 게시물 모드
-                if let image = viewStore.selectedImage {
-                    ZStack {
-                        Color.black
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFit()
+                if let selectedItem = viewStore.selectedItem {
+                    if selectedItem.mediaType == .video {
+                        // 비디오 재생
+                        AssetVideoPlayerView(asset: selectedItem.asset)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 300)
+                            .id(selectedItem.id)  // asset이 바뀌면 뷰를 새로 생성
+                    } else if let image = viewStore.selectedImage {
+                        // 이미지 표시
+                        ZStack {
+                            Color.black
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFit()
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 300)
+                        .clipped()
                     }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 300)
-                    .clipped()
                 } else {
                     Rectangle()
                         .fill(Color.gray.opacity(0.3))
@@ -145,7 +155,7 @@ struct GalleryPickerView: View {
                                 AppIcon.photo
                                     .font(.system(size: 50))
                                     .foregroundStyle(.gray)
-                                Text("선택된 사진이 없습니다")
+                                Text("선택된 미디어가 없습니다")
                                     .font(.appBody)
                                     .foregroundStyle(.gray)
                             }
@@ -264,6 +274,74 @@ struct AssetImageView: View {
         ) { loadedImage, _ in
             self.image = loadedImage
         }
+    }
+}
+
+// MARK: - AssetVideoPlayerView
+struct AssetVideoPlayerView: View {
+    let asset: PHAsset
+    @State private var player: AVPlayer?
+    @State private var isLoading = true
+    @State private var requestID: PHImageRequestID?
+
+    var body: some View {
+        ZStack {
+            Color.black
+
+            if let player = player {
+                VideoPlayer(player: player)
+                    .onAppear {
+                        player.play()
+                    }
+                    .onDisappear {
+                        player.pause()
+                    }
+            } else if isLoading {
+                ProgressView()
+                    .tint(.white)
+            }
+        }
+        .onAppear {
+            loadVideo()
+        }
+        .onDisappear {
+            cleanup()
+        }
+    }
+
+    private func loadVideo() {
+        // 상태 초기화
+        isLoading = true
+
+        let options = PHVideoRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .highQualityFormat
+
+        let id = PHImageManager.default().requestPlayerItem(forVideo: asset, options: options) { [assetID = asset.localIdentifier] playerItem, _ in
+            DispatchQueue.main.async {
+                // 현재 asset과 동일한지 확인 (다른 비디오로 전환되지 않았는지)
+                guard assetID == self.asset.localIdentifier else { return }
+
+                if let playerItem = playerItem {
+                    self.player = AVPlayer(playerItem: playerItem)
+                    self.isLoading = false
+                }
+            }
+        }
+        requestID = id
+    }
+
+    private func cleanup() {
+        // 진행 중인 요청 취소
+        if let requestID = requestID {
+            PHImageManager.default().cancelImageRequest(requestID)
+            self.requestID = nil
+        }
+
+        // 플레이어 정리
+        player?.pause()
+        player = nil
+        isLoading = true
     }
 }
 

@@ -38,7 +38,7 @@ struct MainTabView: View {
                 .tag(MainTabFeature.State.Tab.search)
 
                 // Post Tab
-                ContentView()
+                EmptyForVideoView()
                     .tabItem {
                         tabIcon(for: .post)
                     }
