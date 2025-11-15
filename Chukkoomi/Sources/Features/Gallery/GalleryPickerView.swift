@@ -188,6 +188,8 @@ struct GalleryPickerView: View {
     private func mediaGridItem(item: GalleryPickerFeature.MediaItem, viewStore: ViewStoreOf<GalleryPickerFeature>) -> some View {
         GeometryReader { geometry in
             AssetImageView(asset: item.asset, size: geometry.size)
+                .frame(width: geometry.size.width, height: geometry.size.width)
+                .clipped()
                 .overlay(
                     Group {
                         // 비디오 표시
@@ -217,6 +219,7 @@ struct GalleryPickerView: View {
                         }
                     }
                 )
+                .contentShape(Rectangle())
                 .onTapGesture {
                     viewStore.send(.mediaItemSelected(item))
                 }
