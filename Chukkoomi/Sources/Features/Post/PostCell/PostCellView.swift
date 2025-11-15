@@ -7,7 +7,6 @@
 
 import SwiftUI
 import ComposableArchitecture
-import AVKit
 
 struct PostCellView: View {
     let store: StoreOf<PostCellFeature>
@@ -99,128 +98,14 @@ struct PostCellView: View {
     @ViewBuilder
     private var mediaContentView: some View {
         if let firstFile = store.post.files.first {
-            let fullURL = firstFile.toFullMediaURL
-            let mediaType = MediaTypeHelper.detectMediaType(from: firstFile)
-
-            let _ = print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-            let _ = print("🎬 원본 파일 경로: \(firstFile)")
-            let _ = print("🌐 생성된 전체 URL: \(fullURL)")
-            let _ = print("🎨 감지된 미디어 타입: \(mediaType)")
-            let _ = print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-
-            switch mediaType {
-            case .image:
-                // 이미지 렌더링
-                AsyncImage(url: URL(string: fullURL)) { phase in
-                    switch phase {
-                    case .empty:
-                        // 로딩 중
-                        Color.gray.opacity(0.2)
-                            .frame(height: 300)
-                            .overlay(
-                                VStack(spacing: 8) {
-                                    ProgressView()
-                                    Text("이미지 로딩 중...")
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
-                                }
-                            )
-                            .onAppear {
-                                print("⏳ 이미지 로딩 시작: \(fullURL)")
-                            }
-
-                    case .success(let image):
-                        // 이미지 로드 성공
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(height: 300)
-                            .clipped()
-                            .onAppear {
-                                print("✅ 이미지 로딩 성공: \(fullURL)")
-                            }
-
-                    case .failure(let error):
-                        // 이미지 로드 실패
-                        Color.gray.opacity(0.2)
-                            .frame(height: 300)
-                            .overlay(
-                                VStack(spacing: 8) {
-                                    Image(systemName: "photo")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(.gray)
-                                    Text("이미지를 불러올 수 없습니다")
-                                        .font(.caption)
-                                        .foregroundColor(.gray)
-                                }
-                            )
-                            .onAppear {
-                                print("❌ 이미지 로딩 실패")
-                                print("   URL: \(fullURL)")
-                                print("   에러: \(error.localizedDescription)")
-                            }
-
-                    @unknown default:
-                        EmptyView()
-                    }
-                }
-
-            case .video:
-                // 동영상 렌더링
-                if let url = URL(string: fullURL) {
-                    VideoPlayer(player: AVPlayer(url: url))
-                        .frame(height: 300)
-                        .background(Color.black)
-                        .onAppear {
-                            print("🎥 동영상 로딩: \(fullURL)")
-                        }
-                } else {
-                    // URL 생성 실패
-                    Color.gray.opacity(0.2)
-                        .frame(height: 300)
-                        .overlay(
-                            VStack(spacing: 8) {
-                                Image(systemName: "video.slash")
-                                    .font(.system(size: 40))
-                                    .foregroundColor(.gray)
-                                Text("동영상을 불러올 수 없습니다")
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                                Text(fullURL)
-                                    .font(.system(size: 8))
-                                    .foregroundColor(.red)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.horizontal, 16)
-                            }
-                        )
-                        .onAppear {
-                            print("❌ 동영상 URL 생성 실패: \(fullURL)")
-                        }
-                }
-
-            case .unknown:
-                // 알 수 없는 파일 형식
-                Color.gray.opacity(0.2)
-                    .frame(height: 300)
-                    .overlay(
-                        VStack(spacing: 8) {
-                            Image(systemName: "doc")
-                                .font(.system(size: 40))
-                                .foregroundColor(.gray)
-                            Text("지원하지 않는 파일 형식입니다")
-                                .font(.caption)
-                                .foregroundColor(.gray)
-                            Text(firstFile)
-                                .font(.system(size: 8))
-                                .foregroundColor(.orange)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, 16)
-                        }
-                    )
-                    .onAppear {
-                        print("⚠️ 알 수 없는 파일 형식: \(firstFile)")
-                    }
+            GeometryReader { geometry in
+                AsyncMediaImageView(
+                    imagePath: firstFile,
+                    width: geometry.size.width,
+                    height: 300
+                )
             }
+            .frame(height: 300)
         }
     }
 
