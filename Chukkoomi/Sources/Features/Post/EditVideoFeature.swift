@@ -41,35 +41,10 @@ struct EditVideoFeature {
     struct EditState: Equatable {
         var trimStartTime: Double = 0.0
         var trimEndTime: Double = 0.0
-        var selectedFilter: FilterType? = nil
+        var selectedFilter: VideoFilter? = nil
         // TODO: 추후 추가될 편집 옵션들
         // var subtitles: [Subtitle] = []
         // var audioAdjustments: AudioSettings?
-    }
-
-    enum FilterType: String, CaseIterable, Equatable {
-        case blackAndWhite = "흑백"
-        case warm = "따뜻한"
-        case cool = "차갑게"
-        case bright = "밝게"
-
-        var displayName: String {
-            return rawValue
-        }
-
-        /// CIFilter 이름 반환
-        var ciFilterName: String? {
-            switch self {
-            case .blackAndWhite:
-                return "CIPhotoEffectMono"
-            case .warm:
-                return nil // TODO: 추후 구현
-            case .cool:
-                return nil // TODO: 추후 구현
-            case .bright:
-                return nil // TODO: 추후 구현
-            }
-        }
     }
 
     enum SeekDirection: Equatable {
@@ -88,7 +63,7 @@ struct EditVideoFeature {
         case updateDuration(Double)
         case updateTrimStartTime(Double)
         case updateTrimEndTime(Double)
-        case filterSelected(FilterType)
+        case filterSelected(VideoFilter)
         case filterApplied
         case nextButtonTapped
         case exportProgressUpdated(Double)

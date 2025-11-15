@@ -9,6 +9,7 @@ import SwiftUI
 import ComposableArchitecture
 import AVKit
 import Photos
+@preconcurrency import CoreImage
 
 struct EditVideoView: View {
     let store: StoreOf<EditVideoFeature>
@@ -217,13 +218,13 @@ private struct VideoControlsView: View {
 
 // MARK: - Filter Selection View
 private struct FilterSelectionView: View {
-    let selectedFilter: EditVideoFeature.FilterType?
-    let onFilterSelected: (EditVideoFeature.FilterType) -> Void
+    let selectedFilter: VideoFilter?
+    let onFilterSelected: (VideoFilter) -> Void
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: AppPadding.medium) {
-                ForEach(EditVideoFeature.FilterType.allCases, id: \.self) { filter in
+                ForEach(VideoFilter.allCases, id: \.self) { filter in
                     FilterButton(
                         filter: filter,
                         isSelected: selectedFilter == filter,
@@ -240,7 +241,7 @@ private struct FilterSelectionView: View {
 
 // MARK: - Filter Button
 private struct FilterButton: View {
-    let filter: EditVideoFeature.FilterType
+    let filter: VideoFilter
     let isSelected: Bool
     let action: () -> Void
 
@@ -270,7 +271,7 @@ struct CustomVideoPlayerView: UIViewRepresentable {
     let asset: PHAsset
     let isPlaying: Bool
     let seekTrigger: EditVideoFeature.SeekDirection?
-    let selectedFilter: EditVideoFeature.FilterType?
+    let selectedFilter: VideoFilter?
     let onTimeUpdate: (Double) -> Void
     let onDurationUpdate: (Double) -> Void
     let onSeekCompleted: () -> Void
@@ -322,7 +323,7 @@ struct CustomVideoPlayerView: UIViewRepresentable {
         var playerLayer: AVPlayerLayer?
         var timeObserver: Any?
         var currentAVAsset: AVAsset?
-        var lastAppliedFilter: EditVideoFeature.FilterType?
+        var lastAppliedFilter: VideoFilter?
         let onTimeUpdate: (Double) -> Void
         let onDurationUpdate: (Double) -> Void
 
@@ -403,7 +404,7 @@ struct CustomVideoPlayerView: UIViewRepresentable {
             player.seek(to: clampedTime, toleranceBefore: .zero, toleranceAfter: .zero)
         }
 
-        func updateFilter(_ filterType: EditVideoFeature.FilterType?, onComplete: @escaping () -> Void) {
+        func updateFilter(_ filterType: VideoFilter?, onComplete: @escaping () -> Void) {
             // 이미 적용된 필터와 같으면 중복 호출 방지
             if lastAppliedFilter == filterType {
                 return
@@ -420,93 +421,21 @@ struct CustomVideoPlayerView: UIViewRepresentable {
             }
 
             Task {
-                // 필터가 없으면 videoComposition 제거
-                guard let filterType = filterType,
-                      let filterName = filterType.ciFilterName else {
-                    await MainActor.run {
-                        playerItem.videoComposition = nil
-                        onComplete()
-                    }
-                    return
-                }
-
-                // 비디오 트랙 가져오기
-                guard let videoTrack = try? await avAsset.loadTracks(withMediaType: .video).first else {
-                    await MainActor.run {
-                        onComplete()
-                    }
-                    return
-                }
-
-                let naturalSize = try? await videoTrack.load(.naturalSize)
-                let preferredTransform = try? await videoTrack.load(.preferredTransform)
-
-                // CIFilter 생성
-                let filter = CIFilter(name: filterName)
-
-                // AVVideoComposition 생성
-                let composition = AVMutableVideoComposition(
-                    asset: avAsset,
-                    applyingCIFiltersWithHandler: { request in
-                        let source = request.sourceImage.clampedToExtent()
-                        filter?.setValue(source, forKey: kCIInputImageKey)
-
-                        let output = filter?.outputImage ?? source
-                        request.finish(with: output, context: nil)
-                    }
+                // VideoFilterManager를 사용하여 필터 적용
+                let videoComposition = await VideoFilterManager.createVideoComposition(
+                    for: avAsset,
+                    filter: filterType
                 )
-
-                if let naturalSize = naturalSize {
-                    composition.renderSize = naturalSize
-                }
-
-                if let preferredTransform = preferredTransform {
-                    // Transform 처리 (회전, 플립 등)
-                    let videoInfo = orientation(from: preferredTransform)
-                    var isPortrait = false
-                    switch videoInfo.orientation {
-                    case .up, .upMirrored, .down, .downMirrored:
-                        isPortrait = false
-                    case .left, .leftMirrored, .right, .rightMirrored:
-                        isPortrait = true
-                    @unknown default:
-                        isPortrait = false
-                    }
-
-                    if isPortrait, let naturalSize = naturalSize {
-                        composition.renderSize = CGSize(width: naturalSize.height, height: naturalSize.width)
-                    }
-                }
 
                 // 메인 스레드에서 videoComposition 적용
                 await MainActor.run {
-                    playerItem.videoComposition = composition
+                    playerItem.videoComposition = videoComposition
                     // 약간의 딜레이 후 완료 콜백 호출 (필터 적용이 안정화되도록)
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         onComplete()
                     }
                 }
             }
-        }
-
-        // 비디오 orientation 확인 헬퍼
-        private func orientation(from transform: CGAffineTransform) -> (orientation: UIImage.Orientation, isPortrait: Bool) {
-            var assetOrientation = UIImage.Orientation.up
-            var isPortrait = false
-
-            if transform.a == 0 && transform.b == 1.0 && transform.c == -1.0 && transform.d == 0 {
-                assetOrientation = .right
-                isPortrait = true
-            } else if transform.a == 0 && transform.b == -1.0 && transform.c == 1.0 && transform.d == 0 {
-                assetOrientation = .left
-                isPortrait = true
-            } else if transform.a == 1.0 && transform.b == 0 && transform.c == 0 && transform.d == 1.0 {
-                assetOrientation = .up
-            } else if transform.a == -1.0 && transform.b == 0 && transform.c == 0 && transform.d == -1.0 {
-                assetOrientation = .down
-            }
-
-            return (assetOrientation, isPortrait)
         }
 
         deinit {

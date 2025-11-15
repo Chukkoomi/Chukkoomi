@@ -5,12 +5,11 @@
 //  Created by 김영훈 on 11/15/25.
 //
 
-import Foundation
+import UIKit
 import Photos
 import AVFoundation
-import UIKit
 
-/// 비디오 편집을 적용하고 최종 영상을 내보내는 클래스
+/// 비디오 편집을 적용하고 최종 영상을 내보냄
 struct VideoExporter {
 
     enum ExportError: Error, LocalizedError {
@@ -151,39 +150,13 @@ struct VideoExporter {
     /// Filter 적용
     private func applyFilter(
         to asset: AVAsset,
-        filterType: EditVideoFeature.FilterType?
+        filterType: VideoFilter?
     ) async throws -> AVVideoComposition? {
-        // 필터가 없으면 nil 반환
-        guard let filterType = filterType,
-              let filterName = filterType.ciFilterName else {
-            return nil
-        }
-
-        // 비디오 트랙 가져오기
-        guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
-            return nil
-        }
-
-        let naturalSize = try await videoTrack.load(.naturalSize)
-
-        // CIFilter 생성
-        let filter = CIFilter(name: filterName)
-
-        // AVVideoComposition 생성
-        let composition = AVMutableVideoComposition(
-            asset: asset,
-            applyingCIFiltersWithHandler: { request in
-                let source = request.sourceImage.clampedToExtent()
-                filter?.setValue(source, forKey: kCIInputImageKey)
-
-                let output = filter?.outputImage ?? source
-                request.finish(with: output, context: nil)
-            }
+        // VideoFilterManager를 사용하여 필터 적용
+        return await VideoFilterManager.createVideoComposition(
+            for: asset,
+            filter: filterType
         )
-
-        composition.renderSize = naturalSize
-
-        return composition
     }
 
     /// Composition을 파일로 내보내기
