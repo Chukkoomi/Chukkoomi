@@ -20,6 +20,20 @@
 		B5CC0CDE2EBA3E81003B6A27 /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = B5CC0CDD2EBA3E81003B6A27 /* .gitignore */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		B5AA69A52EC78F2600CA58C1 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				1509EB382EC5721200E86228 /* RealmSwift in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		B5CC0CC92EBA3C6D003B6A27 /* Chukkoomi.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Chukkoomi.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5CC0CDD2EBA3E81003B6A27 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
@@ -51,7 +65,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				15163D142EC49DB400843A8A /* RealmSwift in Frameworks */,
+				B5AA69AA2EC7940100CA58C1 /* RealmSwift */
 				B5AA69A82EC793D900CA58C1 /* ComposableArchitecture in Frameworks */,	
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -86,6 +100,7 @@
 				B5CC0CC52EBA3C6D003B6A27 /* Sources */,
 				B5CC0CC62EBA3C6D003B6A27 /* Frameworks */,
 				B5CC0CC72EBA3C6D003B6A27 /* Resources */,
+				B5AA69A52EC78F2600CA58C1 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
