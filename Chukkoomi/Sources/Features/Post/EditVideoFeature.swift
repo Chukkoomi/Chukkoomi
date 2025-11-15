@@ -8,6 +8,7 @@
 import ComposableArchitecture
 import Foundation
 import Photos
+import AVFoundation
 
 @Reducer
 struct EditVideoFeature {
@@ -21,9 +22,26 @@ struct EditVideoFeature {
         var duration: Double = 0.0
         var seekTrigger: SeekDirection? = nil
 
+        // 편집 데이터
+        var editState: EditState = EditState()
+
+        // 내보내기 상태
+        var isExporting: Bool = false
+        var exportProgress: Double = 0.0
+
         init(videoAsset: PHAsset) {
             self.videoAsset = videoAsset
         }
+    }
+
+    // MARK: - Edit State
+    struct EditState: Equatable {
+        var trimStartTime: Double = 0.0
+        var trimEndTime: Double = 0.0
+        // TODO: 추후 추가될 편집 옵션들
+        // var filters: [VideoFilter] = []
+        // var subtitles: [Subtitle] = []
+        // var audioAdjustments: AudioSettings?
     }
 
     enum SeekDirection: Equatable {
@@ -40,7 +58,12 @@ struct EditVideoFeature {
         case seekCompleted
         case updateCurrentTime(Double)
         case updateDuration(Double)
+        case updateTrimStartTime(Double)
+        case updateTrimEndTime(Double)
         case nextButtonTapped
+        case exportProgressUpdated(Double)
+        case exportCompleted(URL)
+        case exportFailed(String)
     }
 
     // MARK: - Body
@@ -69,10 +92,56 @@ struct EditVideoFeature {
 
             case .updateDuration(let duration):
                 state.duration = duration
+                // duration이 설정되면 trim 범위를 전체로 초기화
+                state.editState.trimStartTime = 0.0
+                state.editState.trimEndTime = duration
+                return .none
+
+            case .updateTrimStartTime(let time):
+                state.editState.trimStartTime = max(0, min(time, state.editState.trimEndTime - 0.1))
+                return .none
+
+            case .updateTrimEndTime(let time):
+                state.editState.trimEndTime = min(state.duration, max(time, state.editState.trimStartTime + 0.1))
                 return .none
 
             case .nextButtonTapped:
-                // TODO: 영상 편집 완료 후 다음 단계로 이동
+                state.isExporting = true
+                state.exportProgress = 0.0
+
+                return .run { [videoAsset = state.videoAsset, editState = state.editState] send in
+                    do {
+                        let exporter = VideoExporter()
+                        let exportedURL = try await exporter.export(
+                            asset: videoAsset,
+                            editState: editState,
+                            progressHandler: { progress in
+                                Task {
+                                    await send(.exportProgressUpdated(progress))
+                                }
+                            }
+                        )
+                        await send(.exportCompleted(exportedURL))
+                    } catch {
+                        await send(.exportFailed(error.localizedDescription))
+                    }
+                }
+
+            case .exportProgressUpdated(let progress):
+                state.exportProgress = progress
+                return .none
+
+            case .exportCompleted(let url):
+                state.isExporting = false
+                state.exportProgress = 1.0
+                // TODO: 편집된 영상을 다음 화면(게시물 작성)으로 전달
+                print("✅ 영상 내보내기 완료: \(url)")
+                return .none
+
+            case .exportFailed(let error):
+                state.isExporting = false
+                state.exportProgress = 0.0
+                print("❌ 영상 내보내기 실패: \(error)")
                 return .none
             }
         }

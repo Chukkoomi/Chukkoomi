@@ -34,11 +34,22 @@ struct EditVideoView: View {
 
                 Spacer()
 
-                // 임시 편집 UI 플레이스홀더
-                Text("영상 편집 화면")
-                    .font(.appTitle)
-                    .foregroundStyle(.gray)
-
+                // 타임라인 트리머
+                VideoTimelineTrimmer(
+                    videoAsset: viewStore.videoAsset,
+                    duration: viewStore.duration,
+                    trimStartTime: viewStore.editState.trimStartTime,
+                    trimEndTime: viewStore.editState.trimEndTime,
+                    onTrimStartChanged: { time in
+                        viewStore.send(.updateTrimStartTime(time))
+                    },
+                    onTrimEndChanged: { time in
+                        viewStore.send(.updateTrimEndTime(time))
+                    }
+                )
+                .frame(height: 60)
+                .padding(.horizontal, AppPadding.large)
+                
                 Spacer()
             }
             .navigationTitle("영상 편집")
@@ -53,8 +64,39 @@ struct EditVideoView: View {
                         Text("다음")
                             .foregroundStyle(.black)
                     }
+                    .disabled(viewStore.isExporting)
                 }
             }
+            .overlay {
+                if viewStore.isExporting {
+                    exportingOverlay(progress: viewStore.exportProgress)
+                }
+            }
+        }
+    }
+
+    // MARK: - Exporting Overlay
+    private func exportingOverlay(progress: Double) -> some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+
+            VStack(spacing: AppPadding.large) {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(.white)
+
+                Text("영상 내보내는 중...")
+                    .font(.appSubTitle)
+                    .foregroundStyle(.white)
+
+                Text("\(Int(progress * 100))%")
+                    .font(.appBody)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            .padding(AppPadding.large * 2)
+            .background(Color.black.opacity(0.8))
+            .cornerRadius(12)
         }
     }
 
