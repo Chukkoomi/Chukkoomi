@@ -44,10 +44,6 @@ struct MainTabFeature {
     
     // MARK: - Body
     var body: some ReducerOf<Self> {
-        Scope(state: \.search, action: \.search) {
-            SearchFeature()
-        }
-        
         Scope(state: \.home, action: \.home) {
             HomeFeature()
         }
@@ -79,6 +75,9 @@ struct MainTabFeature {
             case .myProfile(.logoutCompleted):
                 return .send(.delegate(.logout))
 
+            case .myProfile:
+                return .none
+                
             case .chatList:
                 return .none
 
