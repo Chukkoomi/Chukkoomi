@@ -7,19 +7,24 @@
 
 import SwiftUI
 import ComposableArchitecture
+import Photos
 
 // MARK: - Feature
 struct EmptyForVideoFeature: Reducer {
+
+    // MARK: - State
     struct State: Equatable {
         @PresentationState var galleryPicker: GalleryPickerFeature.State?
     }
 
+    // MARK: - Action
     @CasePathable
     enum Action: Equatable {
         case editVideoButtonTapped
         case galleryPicker(PresentationAction<GalleryPickerFeature.Action>)
     }
 
+    // MARK: - Body
     var body: some ReducerOf<Self> {
         Reduce { state, action in
             switch action {
