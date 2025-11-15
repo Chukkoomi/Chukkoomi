@@ -20,10 +20,13 @@ struct PostCellView: View {
 
             mediaContentView
 
-            
+
             actionBarView
         }
         .padding(.vertical, 8)
+        .confirmationDialog(
+            store: store.scope(state: \.$menu, action: \.menu)
+        )
 //        .buttonWrapper {
 //            store.send(.postTapped)
 //        }
@@ -65,8 +68,12 @@ struct PostCellView: View {
 
             Spacer()
 
-            // 팔로우 버튼
-            followButtonView()
+            // 본인 게시글이면 메뉴 버튼, 아니면 팔로우 버튼
+            if store.isMyPost {
+                menuButtonView()
+            } else {
+                followButtonView()
+            }
         }
         .padding(.horizontal, 16)
     }
@@ -265,16 +272,25 @@ struct PostCellView: View {
     }
     
     private func followButtonView() -> some View {
-        Text("+ 팔로우")
+        Text(store.isFollowing ? "팔로잉" : "+ 팔로우")
             .font(.caption)
-            .foregroundColor(.black)
+            .foregroundColor(store.isFollowing ? .gray : .black)
             .frame(width: 80, height: 40)
             .background(
                 Capsule()
-                .fill(.gray)
+                    .fill(store.isFollowing ? Color.gray.opacity(0.2) : Color.gray)
             )
             .buttonWrapper {
                 store.send(.followTapped)
+            }
+    }
+
+    private func menuButtonView() -> some View {
+        AppIcon.ellipsis
+            .font(.system(size: 20))
+            .frame(width: 40, height: 40)
+            .buttonWrapper {
+                store.send(.menuTapped)
             }
     }
 

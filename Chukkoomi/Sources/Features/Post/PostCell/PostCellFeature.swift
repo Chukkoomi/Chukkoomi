@@ -17,6 +17,9 @@ struct PostCellFeature {
         var isLiked: Bool
         var likeCount: Int
         var isBookmarked: Bool
+        var isFollowing: Bool
+
+        @Presents var menu: ConfirmationDialogState<Action.Menu>?
 
         var id: String {
             post.id
@@ -26,11 +29,38 @@ struct PostCellFeature {
             post.id
         }
 
+        // 본인이 작성한 게시글인지 확인
+        var isMyPost: Bool {
+            guard let myUserId = UserDefaultsHelper.userId,
+                  let creatorId = post.creator?.userId else {
+                return false
+            }
+            return myUserId == creatorId
+        }
+
         init(post: Post) {
             self.post = post
-            self.isLiked = false
             self.likeCount = post.likes?.count ?? 0
-            self.isBookmarked = false
+
+            // 본인의 userId 가져오기
+            let myUserId = UserDefaultsHelper.userId
+
+            // 좋아요 초기 상태 설정
+            if let myUserId = myUserId, let likes = post.likes {
+                self.isLiked = likes.contains(myUserId)
+            } else {
+                self.isLiked = false
+            }
+
+            // 북마크 초기 상태 설정
+            if let myUserId = myUserId, let bookmarks = post.bookmarks {
+                self.isBookmarked = bookmarks.contains(myUserId)
+            } else {
+                self.isBookmarked = false
+            }
+
+            // 팔로우 초기 상태 설정 (추후 Profile 정보로 확인 필요)
+            self.isFollowing = false
         }
     }
 
@@ -38,7 +68,7 @@ struct PostCellFeature {
     enum ToggleType: Equatable, Hashable {
         case like
         case bookmark
-        // case follow // 나중에 추가 예정
+        case follow
     }
 
     // MARK: - Action
@@ -50,6 +80,10 @@ struct PostCellFeature {
         case shareTapped
         case bookmarkTapped
         case followTapped
+        case menuTapped
+
+        // Menu Actions
+        case menu(PresentationAction<Menu>)
 
         // Debounced Network Actions
         case debouncedToggleRequest(ToggleType)
@@ -58,11 +92,17 @@ struct PostCellFeature {
         // Delegate Actions (부모에게 알림)
         case delegate(Delegate)
 
+        enum Menu: Equatable {
+            case editPost
+            case deletePost
+        }
+
         enum Delegate: Equatable {
             case postTapped(String)
             case commentPost(String)
             case sharePost(String)
-            case followUser(String)
+            case editPost(String)
+            case deletePost(String)
         }
 
         static func == (lhs: Action, rhs: Action) -> Bool {
@@ -72,8 +112,11 @@ struct PostCellFeature {
                  (.commentTapped, .commentTapped),
                  (.shareTapped, .shareTapped),
                  (.bookmarkTapped, .bookmarkTapped),
-                 (.followTapped, .followTapped):
+                 (.followTapped, .followTapped),
+                 (.menuTapped, .menuTapped):
                 return true
+            case let (.menu(lhs), .menu(rhs)):
+                return lhs == rhs
             case let (.debouncedToggleRequest(lhs), .debouncedToggleRequest(rhs)):
                 return lhs == rhs
             case let (.toggleResponse(lhsType, _), .toggleResponse(rhsType, _)):
@@ -132,23 +175,54 @@ struct PostCellFeature {
                 return .send(.delegate(.sharePost(postId)))
 
             case .followTapped:
-                guard let userId = state.post.creator?.userId else { return .none }
-                return .send(.delegate(.followUser(userId)))
+                // 낙관적 UI 업데이트 (즉시 상태 변경)
+                state.isFollowing.toggle()
+
+                // 디바운스를 통해 마지막 상태만 네트워크 전송
+                return .send(.debouncedToggleRequest(.follow))
+                    .debounce(id: ToggleType.follow, for: .milliseconds(300), scheduler: DispatchQueue.main)
+
+            case .menuTapped:
+                state.menu = ConfirmationDialogState {
+                    TextState("게시글 관리")
+                } actions: {
+                    ButtonState(action: .editPost) {
+                        TextState("수정하기")
+                    }
+                    ButtonState(role: .destructive, action: .deletePost) {
+                        TextState("삭제하기")
+                    }
+                    ButtonState(role: .cancel) {
+                        TextState("취소")
+                    }
+                }
+                return .none
+
+            case .menu(.presented(.editPost)):
+                guard let postId = state.postId else { return .none }
+                return .send(.delegate(.editPost(postId)))
+
+            case .menu(.presented(.deletePost)):
+                guard let postId = state.postId else { return .none }
+                return .send(.delegate(.deletePost(postId)))
+
+            case .menu:
+                return .none
 
             case .delegate:
                 return .none
             }
         }
+        .ifLet(\.$menu, action: \.menu)
     }
 
     // MARK: - Private Helper Methods
 
-    /// 토글 요청 처리 (좋아요, 북마크 공통)
+    /// 토글 요청 처리 (좋아요, 북마크, 팔로우 공통)
     private func handleToggleRequest(state: State, toggleType: ToggleType) -> Effect<Action> {
-        guard let postId = state.postId else { return .none }
-
         switch toggleType {
         case .like:
+            guard let postId = state.postId else { return .none }
             let currentStatus = state.isLiked
             return .run { send in
                 do {
@@ -163,6 +237,7 @@ struct PostCellFeature {
             }
 
         case .bookmark:
+            guard let postId = state.postId else { return .none }
             let currentStatus = state.isBookmarked
             return .run { send in
                 do {
@@ -173,6 +248,24 @@ struct PostCellFeature {
                     await send(.toggleResponse(.bookmark, .success(response)))
                 } catch {
                     await send(.toggleResponse(.bookmark, .failure(error)))
+                }
+            }
+
+        case .follow:
+            guard let userId = state.post.creator?.userId else { return .none }
+            let currentStatus = state.isFollowing
+            return .run { send in
+                do {
+                    let response = try await NetworkManager.shared.performRequest(
+                        FollowRouter.follow(id: userId, follow: currentStatus),
+                        as: FollowResponseDTO.self
+                    )
+                    let followResponse = response.toDomain
+                    // FollowResponse를 PostLikeResponseDTO와 호환되도록 변환
+                    let adaptedResponse = PostLikeResponseDTO(likeStatus: followResponse.status)
+                    await send(.toggleResponse(.follow, .success(adaptedResponse)))
+                } catch {
+                    await send(.toggleResponse(.follow, .failure(error)))
                 }
             }
         }
@@ -186,7 +279,7 @@ struct PostCellFeature {
     ) -> Effect<Action> {
         switch toggleType {
         case .like:
-            print("✅ 좋아요 성공: \(response.likeStatus)")
+            print("좋아요 성공: \(response.likeStatus)")
             // 서버 응답과 현재 상태가 일치하는지 확인
             if state.isLiked != response.likeStatus {
                 state.isLiked = response.likeStatus
@@ -194,10 +287,17 @@ struct PostCellFeature {
             }
 
         case .bookmark:
-            print("✅ 북마크 성공: \(response.likeStatus)")
+            print("북마크 성공: \(response.likeStatus)")
             // 서버 응답과 현재 상태가 일치하는지 확인
             if state.isBookmarked != response.likeStatus {
                 state.isBookmarked = response.likeStatus
+            }
+
+        case .follow:
+            print("팔로우 성공: \(response.likeStatus)")
+            // 서버 응답과 현재 상태가 일치하는지 확인
+            if state.isFollowing != response.likeStatus {
+                state.isFollowing = response.likeStatus
             }
         }
         return .none
@@ -211,15 +311,20 @@ struct PostCellFeature {
     ) -> Effect<Action> {
         switch toggleType {
         case .like:
-            print("❌ 좋아요 실패: \(error)")
+            print("좋아요 실패: \(error)")
             // 실패 시 상태 롤백
             state.isLiked.toggle()
             state.likeCount += state.isLiked ? 1 : -1
 
         case .bookmark:
-            print("❌ 북마크 실패: \(error)")
+            print("북마크 실패: \(error)")
             // 실패 시 상태 롤백
             state.isBookmarked.toggle()
+
+        case .follow:
+            print("팔로우 실패: \(error)")
+            // 실패 시 상태 롤백
+            state.isFollowing.toggle()
         }
         return .none
     }

@@ -159,9 +159,14 @@ struct PostFeature {
             // TODO: 공유 시트 표시
             return .none
 
-        case let .followUser(userId):
-            print("➕ 팔로우 탭: \(userId)")
-            // TODO: API 호출 - 팔로우 토글
+        case let .editPost(postId):
+            print("✏️ 게시글 수정: \(postId)")
+            // TODO: 게시글 수정 화면으로 이동
+            return .none
+
+        case let .deletePost(postId):
+            print("🗑️ 게시글 삭제: \(postId)")
+            // TODO: 게시글 삭제 API 호출
             return .none
         }
     }
