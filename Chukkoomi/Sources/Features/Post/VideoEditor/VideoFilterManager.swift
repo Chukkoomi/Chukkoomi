@@ -98,7 +98,7 @@ struct VideoFilterManager {
         case .warm:
             return applyWarmFilter(to: image)
         case .cool:
-            return image // TODO: 추후 구현
+            return applyCoolFilter(to: image)
         case .bright:
             return image // TODO: 추후 구현
         }
@@ -127,6 +127,25 @@ struct VideoFilterManager {
 
         filter.setValue(image, forKey: kCIInputImageKey)
         filter.setValue(warmVector, forKey: "inputNeutral")
+        filter.setValue(neutralVector, forKey: "inputTargetNeutral")
+
+        return filter.outputImage ?? image
+    }
+
+    /// 차가운 필터 적용
+    private static func applyCoolFilter(to image: CIImage) -> CIImage {
+        guard let filter = CIFilter(name: "CITemperatureAndTint") else {
+            return image
+        }
+
+        // 색온도를 낮춰서 차가운 느낌 (파란 톤)
+        // neutral: (6500, 0) - 일반적인 색온도
+        // cool: (5000, 0) - 차가운 색온도
+        let coolVector = CIVector(x: 5000, y: 0)
+        let neutralVector = CIVector(x: 6500, y: 0)
+
+        filter.setValue(image, forKey: kCIInputImageKey)
+        filter.setValue(coolVector, forKey: "inputNeutral")
         filter.setValue(neutralVector, forKey: "inputTargetNeutral")
 
         return filter.outputImage ?? image
