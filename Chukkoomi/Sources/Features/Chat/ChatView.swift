@@ -7,11 +7,14 @@
 
 import SwiftUI
 import ComposableArchitecture
+import PhotosUI
 
 struct ChatView: View {
 
     let store: StoreOf<ChatFeature>
     @State private var opponentProfileImage: UIImage?
+    @State private var selectedPhotosItems: [PhotosPickerItem] = []
+    @State private var isProcessingPhotos: Bool = false
 
     var body: some View {
         WithViewStore(store, observe: { $0 }) { viewStore in
@@ -78,6 +81,17 @@ struct ChatView: View {
 
                 // 메시지 입력창
                 HStack(spacing: 12) {
+                    // 이미지 선택 버튼
+                    PhotosPicker(selection: $selectedPhotosItems, maxSelectionCount: 5, matching: .images) {
+                        Image(systemName: "photo")
+                            .foregroundColor(.blue)
+                            .font(.system(size: 22))
+                    }
+                    .onChange(of: selectedPhotosItems) { oldValue, newValue in
+                        handlePhotosSelection(newValue: newValue, viewStore: viewStore)
+                    }
+                    .disabled(viewStore.isUploadingFiles || isProcessingPhotos)
+
                     TextField("메시지를 입력하세요", text: viewStore.binding(
                         get: \.messageText,
                         send: { .messageTextChanged($0) }
@@ -99,6 +113,15 @@ struct ChatView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+                .overlay {
+                    // 업로드 중 로딩 표시
+                    if viewStore.isUploadingFiles {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(Color.black.opacity(0.1))
+                    }
+                }
             }
             .navigationTitle(opponentNickname(chatRoom: viewStore.chatRoom, opponent: viewStore.opponent, myUserId: viewStore.myUserId))
             .navigationBarTitleDisplayMode(.inline)
@@ -164,6 +187,46 @@ struct ChatView: View {
         } catch {
             // 프로필 이미지 로드 실패 시 기본 아이콘 표시
         }
+    }
+
+    // 사진 선택 처리
+    private func handlePhotosSelection(newValue: [PhotosPickerItem], viewStore: ViewStoreOf<ChatFeature>) {
+        guard !newValue.isEmpty, !isProcessingPhotos else { return }
+
+        // 즉시 초기화해서 중복 트리거 방지
+        let itemsToProcess = newValue
+        selectedPhotosItems = []
+        isProcessingPhotos = true
+
+        Task {
+            var filesData: [Data] = []
+
+            for item in itemsToProcess {
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    filesData.append(data)
+                }
+            }
+
+            // 메인 스레드에서 상태 업데이트
+            await MainActor.run {
+                isProcessingPhotos = false
+
+                if !filesData.isEmpty {
+                    viewStore.send(.uploadAndSendFiles(filesData))
+                }
+            }
+        }
+    }
+
+    // 이미지 URL을 절대 경로로 변환
+    private func fullImageURL(_ path: String) -> URL? {
+        let fullURL: String
+        if path.hasPrefix("http") {
+            fullURL = path
+        } else {
+            fullURL = APIInfo.baseURL + path
+        }
+        return URL(string: fullURL)
     }
 }
 
@@ -248,22 +311,13 @@ struct MessageRow: View {
 
             // 이미지 파일
             if !message.files.isEmpty {
-                ForEach(message.files, id: \.self) { fileUrl in
-                    AsyncImage(url: URL(string: fileUrl)) { image in
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(maxWidth: 200, maxHeight: 200)
-                            .cornerRadius(12)
-                    } placeholder: {
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.2))
-                            .frame(width: 200, height: 200)
-                            .cornerRadius(12)
-                            .overlay(
-                                ProgressView()
-                            )
-                    }
+                ForEach(message.files, id: \.self) { filePath in
+                    AsyncMediaImageView(
+                        imagePath: filePath,
+                        width: 200,
+                        height: 200
+                    )
+                    .cornerRadius(12)
                 }
             }
         }

@@ -19,6 +19,7 @@ struct ChatFeature: Reducer {
         var messageText: String = ""
         var isLoading: Bool = false
         var isSending: Bool = false
+        var isUploadingFiles: Bool = false
         var cursorDate: String?
         var hasMoreMessages: Bool = true
     }
@@ -35,6 +36,11 @@ struct ChatFeature: Reducer {
         case loadMoreMessages
         case messageLoadFailed(String)
         case messageSendFailed(String)
+
+        // 파일 업로드
+        case uploadAndSendFiles([Data])
+        case filesUploaded([String])
+        case fileUploadFailed(String)
     }
 
     // MARK: - Reducer
@@ -158,6 +164,76 @@ struct ChatFeature: Reducer {
 
         case .messageSendFailed:
             state.isSending = false
+            // TODO: 에러 알림 표시
+            return .none
+
+        case .uploadAndSendFiles(let filesData):
+            state.isUploadingFiles = true
+
+            // 채팅방이 아직 생성되지 않은 경우 (첫 메시지)
+            if state.chatRoom == nil {
+                return .run { [opponentId = state.opponent.userId] send in
+                    do {
+                        // 1. 채팅방 생성
+                        let chatRoomResponse = try await NetworkManager.shared.performRequest(
+                            ChatRouter.createChatRoom(opponentId: opponentId),
+                            as: ChatRoomResponseDTO.self
+                        )
+                        let chatRoom = chatRoomResponse.toDomain
+                        await send(.chatRoomCreated(chatRoom))
+
+                        // 2. 파일 업로드 재시도
+                        await send(.uploadAndSendFiles(filesData))
+                    } catch {
+                        await send(.fileUploadFailed(error.localizedDescription))
+                    }
+                }
+            }
+
+            return .run { [roomId = state.chatRoom!.roomId] send in
+                do {
+                    // Data를 MultipartFile 배열로 변환
+                    let multipartFiles = filesData.enumerated().map { index, data in
+                        // 파일 확장자 결정 (간단하게 JPEG로 가정, 실제로는 MIME 타입 체크 필요)
+                        let fileName = "image_\(index)_\(UUID().uuidString).jpg"
+                        return MultipartFile(data: data, fileName: fileName, mimeType: "image/jpeg")
+                    }
+
+                    // 파일 업로드 (ChatRouter 사용)
+                    let response = try await NetworkManager.shared.performRequest(
+                        ChatRouter.uploadFiles(roomId: roomId, files: multipartFiles),
+                        as: UploadFileResponseDTO.self
+                    )
+
+                    // 업로드된 파일 URL로 메시지 전송
+                    await send(.filesUploaded(response.files))
+                } catch {
+                    await send(.fileUploadFailed(error.localizedDescription))
+                }
+            }
+
+        case .filesUploaded(let fileUrls):
+            state.isUploadingFiles = false
+
+            // 파일 URL로 메시지 전송
+            guard let roomId = state.chatRoom?.roomId else {
+                return .none
+            }
+
+            return .run { send in
+                do {
+                    let response = try await NetworkManager.shared.performRequest(
+                        ChatRouter.sendMessage(roomId: roomId, content: nil, files: fileUrls),
+                        as: ChatMessageResponseDTO.self
+                    )
+                    await send(.messageSent(response.toDomain))
+                } catch {
+                    await send(.messageSendFailed(error.localizedDescription))
+                }
+            }
+
+        case .fileUploadFailed:
+            state.isUploadingFiles = false
             // TODO: 에러 알림 표시
             return .none
         }
