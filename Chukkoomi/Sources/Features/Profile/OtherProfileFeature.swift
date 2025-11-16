@@ -58,7 +58,6 @@ struct OtherProfileFeature {
         case profileLoaded(Profile)
         case postImagesLoaded([PostImage])
         case followToggled(Bool)
-        case chatRoomCreated(ChatRoom)
 
         // 게시물 fetch
         case fetchPosts(postIds: [String])
@@ -110,20 +109,21 @@ struct OtherProfileFeature {
             }
 
         case .messageButtonTapped:
-            // 채팅방 생성
-            return .run { [userId = state.userId] send in
-                do {
-                    let response = try await NetworkManager.shared.performRequest(
-                        ChatRouter.createChatRoom(opponentId: userId),
-                        as: ChatRoomResponseDTO.self
-                    )
-                    let chatRoom = response.toDomain
-                    await send(.chatRoomCreated(chatRoom))
-                } catch {
-                    print("채팅방 생성 실패: \(error)")
-                    // TODO: 채팅방 화면 구현되면 네비게이션으로 변경
-                }
-            }
+            // 채팅 화면으로 이동 (채팅방은 첫 메시지 전송 시 생성)
+            guard let profile = state.profile else { return .none }
+
+            let opponent = ChatUser(
+                userId: profile.userId,
+                nick: profile.nickname,
+                profileImage: profile.profileImage
+            )
+
+            state.chat = ChatFeature.State(
+                chatRoom: nil,
+                opponent: opponent,
+                myUserId: state.myUser?.userId
+            )
+            return .none
 
         case .followerButtonTapped:
             guard let profile = state.profile else { return .none }
@@ -186,12 +186,6 @@ struct OtherProfileFeature {
                 state.profile = profile
             }
 
-            return .none
-
-        case .chatRoomCreated(let chatRoom):
-            // 채팅방 생성 성공 -> 채팅 화면으로 이동
-            print("채팅방 생성 성공: \(chatRoom.roomId)")
-            state.chat = ChatFeature.State(chatRoom: chatRoom, myUserId: state.myUser?.userId)
             return .none
 
         case .fetchPosts(let postIds):

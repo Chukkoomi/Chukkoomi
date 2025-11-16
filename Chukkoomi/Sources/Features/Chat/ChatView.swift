@@ -25,8 +25,7 @@ struct ChatView: View {
                     .task {
                         // 프로필 이미지 한 번만 로드
                         await loadOpponentProfileImage(
-                            chatRoom: viewStore.chatRoom,
-                            myUserId: viewStore.myUserId
+                            opponent: viewStore.opponent
                         )
                     }
 
@@ -101,7 +100,7 @@ struct ChatView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
             }
-            .navigationTitle(opponentNickname(chatRoom: viewStore.chatRoom, myUserId: viewStore.myUserId))
+            .navigationTitle(opponentNickname(chatRoom: viewStore.chatRoom, opponent: viewStore.opponent, myUserId: viewStore.myUserId))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
         }
@@ -116,7 +115,12 @@ struct ChatView: View {
     }
 
     // 상대방 닉네임 추출
-    private func opponentNickname(chatRoom: ChatRoom, myUserId: String?) -> String {
+    private func opponentNickname(chatRoom: ChatRoom?, opponent: ChatUser, myUserId: String?) -> String {
+        guard let chatRoom = chatRoom else {
+            // 채팅방이 아직 생성되지 않은 경우 opponent 정보 사용
+            return opponent.nick
+        }
+
         guard let myUserId = myUserId else {
             return chatRoom.participants.first?.nick ?? "채팅"
         }
@@ -136,17 +140,8 @@ struct ChatView: View {
     }
 
     // 상대방 프로필 이미지를 한 번만 로드
-    private func loadOpponentProfileImage(chatRoom: ChatRoom, myUserId: String?) async {
-        let imagePath: String?
-
-        if let myUserId = myUserId,
-           let opponent = chatRoom.participants.first(where: { $0.userId != myUserId }) {
-            imagePath = opponent.profileImage
-        } else {
-            imagePath = chatRoom.participants.first?.profileImage
-        }
-
-        guard let path = imagePath else {
+    private func loadOpponentProfileImage(opponent: ChatUser) async {
+        guard let path = opponent.profileImage else {
             return
         }
 

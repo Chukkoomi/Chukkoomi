@@ -12,7 +12,8 @@ struct ChatFeature: Reducer {
 
     // MARK: - State
     struct State: Equatable {
-        let chatRoom: ChatRoom
+        var chatRoom: ChatRoom?  // 옵셔널로 변경 (첫 메시지 전송 시 생성)
+        let opponent: ChatUser   // 상대방 정보
         let myUserId: String?
         var messages: [ChatMessage] = []
         var messageText: String = ""
@@ -30,6 +31,7 @@ struct ChatFeature: Reducer {
         case messageTextChanged(String)
         case sendMessageTapped
         case messageSent(ChatMessage)
+        case chatRoomCreated(ChatRoom)
         case loadMoreMessages
         case messageLoadFailed(String)
         case messageSendFailed(String)
@@ -43,7 +45,13 @@ struct ChatFeature: Reducer {
             return .send(.loadMessages)
 
         case .loadMessages:
-            return .run { [roomId = state.chatRoom.roomId, cursorDate = state.cursorDate] send in
+            // 채팅방이 아직 생성되지 않은 경우 (첫 메시지 전송 전)
+            guard let roomId = state.chatRoom?.roomId else {
+                state.isLoading = false
+                return .none
+            }
+
+            return .run { [cursorDate = state.cursorDate] send in
                 do {
                     let response = try await NetworkManager.shared.performRequest(
                         ChatRouter.getChatHistory(roomId: roomId, cursorDate: cursorDate),
@@ -89,21 +97,50 @@ struct ChatFeature: Reducer {
             let messageContent = state.messageText
             state.messageText = "" // 즉시 입력창 클리어
 
-            return .run { [roomId = state.chatRoom.roomId] send in
-                do {
-                    let response = try await NetworkManager.shared.performRequest(
-                        ChatRouter.sendMessage(roomId: roomId, content: messageContent, files: nil),
-                        as: ChatMessageResponseDTO.self
-                    )
-                    await send(.messageSent(response.toDomain))
-                } catch {
-                    await send(.messageSendFailed(error.localizedDescription))
+            // 채팅방이 아직 생성되지 않은 경우 (첫 메시지)
+            if state.chatRoom == nil {
+                return .run { [opponentId = state.opponent.userId] send in
+                    do {
+                        // 1. 채팅방 생성
+                        let chatRoomResponse = try await NetworkManager.shared.performRequest(
+                            ChatRouter.createChatRoom(opponentId: opponentId),
+                            as: ChatRoomResponseDTO.self
+                        )
+                        let chatRoom = chatRoomResponse.toDomain
+                        await send(.chatRoomCreated(chatRoom))
+
+                        // 2. 메시지 전송
+                        let messageResponse = try await NetworkManager.shared.performRequest(
+                            ChatRouter.sendMessage(roomId: chatRoom.roomId, content: messageContent, files: nil),
+                            as: ChatMessageResponseDTO.self
+                        )
+                        await send(.messageSent(messageResponse.toDomain))
+                    } catch {
+                        await send(.messageSendFailed(error.localizedDescription))
+                    }
+                }
+            } else {
+                // 채팅방이 이미 존재하는 경우
+                return .run { [roomId = state.chatRoom!.roomId] send in
+                    do {
+                        let response = try await NetworkManager.shared.performRequest(
+                            ChatRouter.sendMessage(roomId: roomId, content: messageContent, files: nil),
+                            as: ChatMessageResponseDTO.self
+                        )
+                        await send(.messageSent(response.toDomain))
+                    } catch {
+                        await send(.messageSendFailed(error.localizedDescription))
+                    }
                 }
             }
 
         case .messageSent(let message):
             state.isSending = false
             state.messages.append(message)
+            return .none
+
+        case .chatRoomCreated(let chatRoom):
+            state.chatRoom = chatRoom
             return .none
 
         case .loadMoreMessages:
