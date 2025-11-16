@@ -28,6 +28,9 @@ struct EditVideoFeature {
         // 필터 적용 상태
         var isApplyingFilter: Bool = false
 
+        // AnimeGAN 전처리된 비디오 (무거운 필터는 미리 처리)
+        var preProcessedVideoURL: URL? = nil
+
         // 내보내기 상태
         var isExporting: Bool = false
         var exportProgress: Double = 0.0
@@ -65,6 +68,8 @@ struct EditVideoFeature {
         case updateTrimEndTime(Double)
         case filterSelected(VideoFilter)
         case filterApplied
+        case preProcessCompleted(URL)
+        case preProcessFailed(String)
         case nextButtonTapped
         case exportProgressUpdated(Double)
         case exportCompleted(URL)
@@ -111,20 +116,62 @@ struct EditVideoFeature {
                 return .none
 
             case .filterSelected(let filter):
-                // 같은 필터를 다시 선택하면 선택 해제, 다른 필터를 선택하면 변경
-                if state.editState.selectedFilter == filter {
-                    state.editState.selectedFilter = nil
-                    state.isApplyingFilter = true
-                } else {
-                    state.editState.selectedFilter = filter
-                    state.isApplyingFilter = true
-                }
                 // 필터 적용 중에는 재생 중지
                 state.isPlaying = false
-                return .none
+
+                // 같은 필터를 다시 선택하면 선택 해제
+                if state.editState.selectedFilter == filter {
+                    state.editState.selectedFilter = nil
+                    state.preProcessedVideoURL = nil  // 전처리된 비디오 제거
+                    // 필터 해제는 즉시 완료 (로딩 필요 없음)
+                    return .none
+                }
+
+                // 다른 필터 선택
+                state.editState.selectedFilter = filter
+
+                // AnimeGAN 필터는 미리 전처리 필요 (실시간 재생이 너무 느림)
+                if filter == .animeGANHayao {
+                    state.isApplyingFilter = true
+                    return .run { [videoAsset = state.videoAsset, duration = state.duration] send in
+                        do {
+                            // AnimeGAN 필터를 미리 적용한 비디오 생성
+                            let exporter = VideoExporter()
+                            let tempEditState = EditState(
+                                trimStartTime: 0.0,
+                                trimEndTime: duration > 0 ? duration : .infinity,  // 전체 영상
+                                selectedFilter: .animeGANHayao
+                            )
+                            let processedURL = try await exporter.export(
+                                asset: videoAsset,
+                                editState: tempEditState,
+                                progressHandler: { _ in }
+                            )
+                            await send(.preProcessCompleted(processedURL))
+                        } catch {
+                            await send(.preProcessFailed(error.localizedDescription))
+                        }
+                    }
+                } else {
+                    // 다른 필터는 실시간 적용 가능
+                    state.preProcessedVideoURL = nil
+                    // 실시간 필터는 즉시 적용되므로 로딩 없음
+                    return .none
+                }
 
             case .filterApplied:
                 state.isApplyingFilter = false
+                return .none
+
+            case .preProcessCompleted(let url):
+                state.preProcessedVideoURL = url
+                state.isApplyingFilter = false
+                return .none
+
+            case .preProcessFailed(let error):
+                state.isApplyingFilter = false
+                state.editState.selectedFilter = nil  // 필터 선택 해제
+                print("❌ 필터 전처리 실패: \(error)")
                 return .none
 
             case .nextButtonTapped:

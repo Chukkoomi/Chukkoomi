@@ -8,13 +8,15 @@
 import UIKit
 import AVFoundation
 @preconcurrency import CoreImage
+import Vision
+import CoreML
 
 /// 비디오 필터 타입
 enum VideoFilter: String, CaseIterable, Equatable {
     case blackAndWhite = "흑백"
     case warm = "따뜻한"
     case cool = "차갑게"
-    case bright = "밝게"
+    case animeGANHayao = "Hayao"
 
     var displayName: String {
         return rawValue
@@ -50,10 +52,11 @@ struct VideoFilterManager {
         let composition = AVMutableVideoComposition(
             asset: asset,
             applyingCIFiltersWithHandler: { request in
-                let source = request.sourceImage.clampedToExtent()
+                let source = request.sourceImage
+                let clampedSource = source.clampedToExtent()
 
-                // 필터별로 CIFilter 생성 및 적용
-                let output = applyFilter(filter, to: source)
+                // 필터별로 CIFilter 생성 및 적용 (원본과 clamped 버전 모두 전달)
+                let output = applyFilter(filter, to: clampedSource, originalImage: source)
                 request.finish(with: output, context: nil)
             }
         )
@@ -89,9 +92,10 @@ struct VideoFilterManager {
     /// CIImage에 필터 적용
     /// - Parameters:
     ///   - filter: 적용할 필터
-    ///   - image: 원본 이미지
+    ///   - image: clamped 이미지 (대부분의 필터용)
+    ///   - originalImage: 원본 이미지 (ML 모델용)
     /// - Returns: 필터가 적용된 이미지
-    private static func applyFilter(_ filter: VideoFilter, to image: CIImage) -> CIImage {
+    private static func applyFilter(_ filter: VideoFilter, to image: CIImage, originalImage: CIImage) -> CIImage {
         switch filter {
         case .blackAndWhite:
             return applyBlackAndWhiteFilter(to: image)
@@ -99,8 +103,8 @@ struct VideoFilterManager {
             return applyWarmFilter(to: image)
         case .cool:
             return applyCoolFilter(to: image)
-        case .bright:
-            return image // TODO: 추후 구현
+        case .animeGANHayao:
+            return applyAnimeGANHayao(to: originalImage)
         }
     }
 
@@ -149,6 +153,242 @@ struct VideoFilterManager {
         filter.setValue(neutralVector, forKey: "inputTargetNeutral")
 
         return filter.outputImage ?? image
+    }
+    
+    /// AnimeGANv3 CoreML 필터 적용
+    private static func applyAnimeGANHayao(to image: CIImage) -> CIImage {
+        // extent 유효성 검사
+        guard image.extent.width > 0 && image.extent.height > 0,
+              image.extent.width.isFinite && image.extent.height.isFinite else {
+            print("[Error] AnimeGAN: Invalid image extent: \(image.extent)")
+            return image
+        }
+
+        guard let modelURL = Bundle.main.url(forResource: "AnimeGANv3_Hayao_36", withExtension: "mlmodelc") else {
+            print("[Error] AnimeGANv3_Hayao_36.mlmodelc not found")
+            return image
+        }
+
+        do {
+            let mlModel = try MLModel(contentsOf: modelURL)
+
+            // 모델의 입력 크기 가져오기
+            guard let inputName = mlModel.modelDescription.inputDescriptionsByName.keys.first,
+                  let inputDescription = mlModel.modelDescription.inputDescriptionsByName[inputName],
+                  let imageConstraint = inputDescription.imageConstraint else {
+                print("[Error] AnimeGAN: Failed to get input description")
+                return image
+            }
+
+            // 모델이 허용하는 입력 크기 결정 (512 고정 필요)
+            let modelSize: CGSize
+            let width = imageConstraint.pixelsWide
+            let height = imageConstraint.pixelsHigh
+
+            if width > 0 && height > 0 {
+                // 고정 크기
+                modelSize = CGSize(width: width, height: height)
+            } else {
+                // 가변 크기인 경우 512x512 사용
+                modelSize = CGSize(width: 512, height: 512)
+            }
+
+            print("[Info] AnimeGAN: Using model input size: \(modelSize)")
+
+            // 원본 이미지 크기 저장
+            let originalSize = image.extent.size
+
+            // 이미지를 모델 입력 크기로 리사이즈
+            let scaleX = modelSize.width / image.extent.width
+            let scaleY = modelSize.height / image.extent.height
+            let resizedImage = image.transformed(by: CGAffineTransform(scaleX: scaleX, y: scaleY))
+
+            // CIImage를 CVPixelBuffer로 변환
+            guard let inputPixelBuffer = createPixelBuffer(from: resizedImage, size: modelSize) else {
+                print("[Error] AnimeGAN: Failed to create input pixel buffer")
+                return image
+            }
+
+            // MLFeatureProvider 생성
+            let input = try MLDictionaryFeatureProvider(dictionary: [inputName: MLFeatureValue(pixelBuffer: inputPixelBuffer)])
+
+            // 모델 실행
+            let output = try mlModel.prediction(from: input)
+
+            // 출력 이름 가져오기
+            let outputName = mlModel.modelDescription.outputDescriptionsByName.keys.first ?? "Identity"
+
+            // 출력 데이터 가져오기
+            var outputImage: CIImage
+
+            // imageBufferValue 시도
+            if let outputPixelBuffer = output.featureValue(for: outputName)?.imageBufferValue {
+                outputImage = CIImage(cvPixelBuffer: outputPixelBuffer)
+            }
+            // multiArrayValue로 폴백
+            else if let multiArray = output.featureValue(for: outputName)?.multiArrayValue {
+                guard let pixelBuffer = createPixelBuffer(from: multiArray, size: modelSize) else {
+                    print("[Error] AnimeGAN: Failed to create pixel buffer from multi array")
+                    return image
+                }
+                outputImage = CIImage(cvPixelBuffer: pixelBuffer)
+            } else {
+                print("[Error] AnimeGAN: Failed to get output data")
+                return image
+            }
+
+            // 원본 크기로 복원
+            let scaleBackX = originalSize.width / outputImage.extent.width
+            let scaleBackY = originalSize.height / outputImage.extent.height
+            outputImage = outputImage.transformed(by: CGAffineTransform(scaleX: scaleBackX, y: scaleBackY))
+
+            return outputImage
+        } catch {
+            print("[Error] AnimeGAN CoreML processing failed: \(error)")
+            return image
+        }
+    }
+
+    /// CIImage를 CVPixelBuffer로 변환
+    private static func createPixelBuffer(from image: CIImage, size: CGSize) -> CVPixelBuffer? {
+        let attributes: [String: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
+            kCVPixelBufferWidthKey as String: Int(size.width),
+            kCVPixelBufferHeightKey as String: Int(size.height),
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+        ]
+
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            Int(size.width),
+            Int(size.height),
+            kCVPixelFormatType_32BGRA,
+            attributes as CFDictionary,
+            &pixelBuffer
+        )
+
+        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+            return nil
+        }
+
+        let context = CIContext()
+        context.render(image, to: buffer)
+
+        return buffer
+    }
+
+    /// MLMultiArray를 CVPixelBuffer로 변환 (rank-3 tensor용 - 성능 최적화)
+    private static func createPixelBuffer(from multiArray: MLMultiArray, size: CGSize) -> CVPixelBuffer? {
+        let width = Int(size.width)
+        let height = Int(size.height)
+
+        let attributes: [String: Any] = [
+            kCVPixelBufferCGImageCompatibilityKey as String: true,
+            kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
+            kCVPixelBufferWidthKey as String: width,
+            kCVPixelBufferHeightKey as String: height,
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+        ]
+
+        var pixelBuffer: CVPixelBuffer?
+        let status = CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width,
+            height,
+            kCVPixelFormatType_32BGRA,
+            attributes as CFDictionary,
+            &pixelBuffer
+        )
+
+        guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+            print("[Error] AnimeGAN: Failed to create pixel buffer")
+            return nil
+        }
+
+        CVPixelBufferLockBaseAddress(buffer, CVPixelBufferLockFlags(rawValue: 0))
+        defer { CVPixelBufferUnlockBaseAddress(buffer, CVPixelBufferLockFlags(rawValue: 0)) }
+
+        guard let baseAddress = CVPixelBufferGetBaseAddress(buffer) else {
+            print("[Error] AnimeGAN: Failed to get pixel buffer base address")
+            return nil
+        }
+
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+        let bufferPointer = baseAddress.assumingMemoryBound(to: UInt8.self)
+
+        // MLMultiArray의 데이터 포인터 직접 접근 (성능 최적화)
+        let shape = multiArray.shape.map { $0.intValue }
+        let strides = multiArray.strides.map { $0.intValue }
+
+        // dataPointer를 Float 타입으로 바인딩 (대부분의 모델은 Float32 출력)
+        let dataPointer = UnsafeMutablePointer<Float>(OpaquePointer(multiArray.dataPointer))
+
+        // shape 확인: [channels, height, width] 또는 [height, width, channels]
+        let isChannelsFirst = shape.count == 3 && shape[0] == 3
+
+        if isChannelsFirst {
+            // [channels, height, width] 형식 - 더 빠른 변환
+            let channelStride = strides[0]
+            let heightStride = strides[1]
+            let widthStride = strides[2]
+
+            for y in 0..<height {
+                for x in 0..<width {
+                    let baseIdx = y * heightStride + x * widthStride
+
+                    let r = dataPointer[baseIdx]
+                    let g = dataPointer[baseIdx + channelStride]
+                    let b = dataPointer[baseIdx + channelStride * 2]
+
+                    // 값이 [0, 1] 범위면 255로 스케일
+                    let scale: Float = (r <= 1.0 && g <= 1.0 && b <= 1.0) ? 255.0 : 1.0
+
+                    let rByte = UInt8(max(0, min(255, r * scale)))
+                    let gByte = UInt8(max(0, min(255, g * scale)))
+                    let bByte = UInt8(max(0, min(255, b * scale)))
+
+                    // BGRA 형식으로 저장
+                    let offset = y * bytesPerRow + x * 4
+                    bufferPointer[offset] = bByte     // B
+                    bufferPointer[offset + 1] = gByte // G
+                    bufferPointer[offset + 2] = rByte // R
+                    bufferPointer[offset + 3] = 255   // A
+                }
+            }
+        } else {
+            // [height, width, channels] 형식
+            let heightStride = strides[0]
+            let widthStride = strides[1]
+            let channelStride = strides[2]
+
+            for y in 0..<height {
+                for x in 0..<width {
+                    let baseIdx = y * heightStride + x * widthStride
+
+                    let r = dataPointer[baseIdx]
+                    let g = dataPointer[baseIdx + channelStride]
+                    let b = dataPointer[baseIdx + channelStride * 2]
+
+                    // 값이 [0, 1] 범위면 255로 스케일
+                    let scale: Float = (r <= 1.0 && g <= 1.0 && b <= 1.0) ? 255.0 : 1.0
+
+                    let rByte = UInt8(max(0, min(255, r * scale)))
+                    let gByte = UInt8(max(0, min(255, g * scale)))
+                    let bByte = UInt8(max(0, min(255, b * scale)))
+
+                    // BGRA 형식으로 저장
+                    let offset = y * bytesPerRow + x * 4
+                    bufferPointer[offset] = bByte     // B
+                    bufferPointer[offset + 1] = gByte // G
+                    bufferPointer[offset + 2] = rByte // R
+                    bufferPointer[offset + 3] = 255   // A
+                }
+            }
+        }
+
+        return buffer
     }
 
     /// 비디오 orientation 확인 헬퍼

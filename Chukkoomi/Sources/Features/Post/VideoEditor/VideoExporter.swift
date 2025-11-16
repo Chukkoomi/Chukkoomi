@@ -109,8 +109,17 @@ struct VideoExporter {
     ) async throws -> AVAsset {
         // 시간 범위 설정
         let startTime = CMTime(seconds: editState.trimStartTime, preferredTimescale: 600)
-        let endTime = CMTime(seconds: editState.trimEndTime, preferredTimescale: 600)
-        let timeRange = CMTimeRange(start: startTime, end: endTime)
+
+        // endTime이 infinity이거나 비정상적으로 큰 경우 asset의 실제 duration 사용
+        let assetDuration = try await asset.load(.duration)
+        let actualEndTime: CMTime
+        if editState.trimEndTime.isInfinite || editState.trimEndTime > assetDuration.seconds {
+            actualEndTime = assetDuration
+        } else {
+            actualEndTime = CMTime(seconds: editState.trimEndTime, preferredTimescale: 600)
+        }
+
+        let timeRange = CMTimeRange(start: startTime, end: actualEndTime)
 
         // 비디오 트랙 추가
         guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {

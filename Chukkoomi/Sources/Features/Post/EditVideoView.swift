@@ -23,6 +23,7 @@ struct EditVideoView: View {
                     .overlay {
                         CustomVideoPlayerView(
                             asset: viewStore.videoAsset,
+                            preProcessedVideoURL: viewStore.preProcessedVideoURL,
                             isPlaying: viewStore.isPlaying,
                             seekTrigger: viewStore.seekTrigger,
                             selectedFilter: viewStore.editState.selectedFilter,
@@ -271,6 +272,7 @@ private struct FilterButton: View {
 // MARK: - Custom Video Player
 struct CustomVideoPlayerView: UIViewRepresentable {
     let asset: PHAsset
+    let preProcessedVideoURL: URL?  // AnimeGAN 등 전처리된 비디오
     let isPlaying: Bool
     let seekTrigger: EditVideoFeature.SeekDirection?
     let selectedFilter: VideoFilter?
@@ -283,12 +285,33 @@ struct CustomVideoPlayerView: UIViewRepresentable {
         let view = UIView()
         view.backgroundColor = .black
 
-        context.coordinator.loadVideo(for: asset, in: view)
+        if let preProcessedVideoURL = preProcessedVideoURL {
+            // 전처리된 비디오가 있으면 그것을 로드
+            context.coordinator.loadVideo(from: preProcessedVideoURL, in: view)
+        } else {
+            // 없으면 원본 PHAsset 로드
+            context.coordinator.loadVideo(for: asset, in: view)
+        }
 
         return view
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
+        // 전처리된 비디오가 변경되면 다시 로드
+        if context.coordinator.currentPreProcessedURL != preProcessedVideoURL {
+            if let preProcessedVideoURL = preProcessedVideoURL {
+                // 전처리된 비디오 로드
+                context.coordinator.loadVideo(from: preProcessedVideoURL, in: uiView)
+                // 전처리된 비디오에는 필터가 이미 구워져 있으므로 lastAppliedFilter 설정
+                context.coordinator.lastAppliedFilter = selectedFilter
+            } else {
+                // 원본 비디오 로드
+                context.coordinator.loadVideo(for: asset, in: uiView)
+                // 원본 비디오는 필터 적용 필요하므로 초기화
+                context.coordinator.lastAppliedFilter = nil
+            }
+        }
+
         // 재생/일시정지 처리
         if isPlaying {
             context.coordinator.play()
@@ -309,8 +332,12 @@ struct CustomVideoPlayerView: UIViewRepresentable {
             }
         }
 
-        // 필터 업데이트
-        context.coordinator.updateFilter(selectedFilter, onComplete: onFilterApplied)
+        // 전처리된 비디오를 사용하는 경우 필터는 이미 적용되어 있으므로 스킵
+        if preProcessedVideoURL == nil {
+            // 원본 비디오 재생 중 - 실시간 필터 적용
+            context.coordinator.updateFilter(selectedFilter, onComplete: onFilterApplied)
+        }
+        // 전처리된 비디오는 이미 필터가 구워져 있으므로 아무것도 하지 않음
     }
 
     func makeCoordinator() -> Coordinator {
@@ -326,6 +353,7 @@ struct CustomVideoPlayerView: UIViewRepresentable {
         var timeObserver: Any?
         var currentAVAsset: AVAsset?
         var lastAppliedFilter: VideoFilter?
+        var currentPreProcessedURL: URL?  // 현재 로드된 전처리 비디오 URL
         let onTimeUpdate: (Double) -> Void
         let onDurationUpdate: (Double) -> Void
 
@@ -338,6 +366,8 @@ struct CustomVideoPlayerView: UIViewRepresentable {
         }
 
         func loadVideo(for asset: PHAsset, in view: UIView) {
+            currentPreProcessedURL = nil  // PHAsset 로드 시 전처리 URL 초기화
+
             let options = PHVideoRequestOptions()
             options.isNetworkAccessAllowed = true
             options.deliveryMode = .highQualityFormat
@@ -346,38 +376,59 @@ struct CustomVideoPlayerView: UIViewRepresentable {
                 guard let self, let avAsset else { return }
 
                 DispatchQueue.main.async {
-                    self.currentAVAsset = avAsset
-                    let playerItem = AVPlayerItem(asset: avAsset)
+                    self.setupPlayer(with: avAsset, in: view)
+                }
+            }
+        }
 
-                    self.player = AVPlayer(playerItem: playerItem)
-                    self.playerLayer = AVPlayerLayer(player: self.player)
-                    self.playerLayer?.frame = view.bounds
-                    self.playerLayer?.videoGravity = .resizeAspect
+        func loadVideo(from url: URL, in view: UIView) {
+            currentPreProcessedURL = url  // 전처리 URL 저장
 
-                    if let playerLayer = self.playerLayer {
-                        view.layer.addSublayer(playerLayer)
-                    }
+            let avAsset = AVAsset(url: url)
+            DispatchQueue.main.async { [weak self] in
+                self?.setupPlayer(with: avAsset, in: view)
+            }
+        }
 
-                    // Duration 업데이트
-                    Task {
-                        if let duration = try? await avAsset.load(.duration) {
-                            let durationSeconds = duration.seconds
-                            if durationSeconds.isFinite {
-                                await MainActor.run {
-                                    self.onDurationUpdate(durationSeconds)
-                                }
-                            }
+        private func setupPlayer(with avAsset: AVAsset, in view: UIView) {
+            // 기존 플레이어 정리
+            if let timeObserver = timeObserver {
+                player?.removeTimeObserver(timeObserver)
+            }
+            player?.pause()
+            playerLayer?.removeFromSuperlayer()
+
+            // 새 플레이어 설정
+            currentAVAsset = avAsset
+            let playerItem = AVPlayerItem(asset: avAsset)
+
+            player = AVPlayer(playerItem: playerItem)
+            playerLayer = AVPlayerLayer(player: player)
+            playerLayer?.frame = view.bounds
+            playerLayer?.videoGravity = .resizeAspect
+
+            if let playerLayer = playerLayer {
+                view.layer.addSublayer(playerLayer)
+            }
+
+            // Duration 업데이트
+            Task { [weak self] in
+                if let duration = try? await avAsset.load(.duration) {
+                    let durationSeconds = duration.seconds
+                    if durationSeconds.isFinite {
+                        await MainActor.run {
+                            self?.onDurationUpdate(durationSeconds)
                         }
                     }
+                }
+            }
 
-                    // 시간 업데이트 observer 추가
-                    let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
-                    self.timeObserver = self.player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-                        let currentTime = time.seconds
-                        if currentTime.isFinite {
-                            self?.onTimeUpdate(currentTime)
-                        }
-                    }
+            // 시간 업데이트 observer 추가
+            let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
+            timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+                let currentTime = time.seconds
+                if currentTime.isFinite {
+                    self?.onTimeUpdate(currentTime)
                 }
             }
         }
@@ -407,6 +458,13 @@ struct CustomVideoPlayerView: UIViewRepresentable {
         }
 
         func updateFilter(_ filterType: VideoFilter?, onComplete: @escaping () -> Void) {
+            // AnimeGAN 필터는 실시간 적용하지 않음 (전처리 방식 사용)
+            if filterType == .animeGANHayao {
+                // onComplete를 호출하지 않아서 indicator가 계속 표시되도록 함
+                // 전처리가 완료되면 preProcessCompleted에서 indicator가 사라짐
+                return
+            }
+
             // 이미 적용된 필터와 같으면 중복 호출 방지
             if lastAppliedFilter == filterType {
                 return
