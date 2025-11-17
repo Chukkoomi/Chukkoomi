@@ -327,7 +327,7 @@ struct MessageRow: View {
                     .foregroundColor(isMyMessage ? .white : .primary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(isMyMessage ? Color.blue : Color.gray.opacity(0.2))
+                    .background(isMyMessage ? AppColor.disabled : Color.gray.opacity(0.2))
                     .cornerRadius(16)
             }
 
@@ -429,7 +429,7 @@ struct MessageRow: View {
             }
         }
         .padding(4)
-        .background(isMyMessage ? Color.blue : Color.gray.opacity(0.2))
+        .background(isMyMessage ? AppColor.disabled : Color.gray.opacity(0.2))
         .cornerRadius(12)
     }
 }
