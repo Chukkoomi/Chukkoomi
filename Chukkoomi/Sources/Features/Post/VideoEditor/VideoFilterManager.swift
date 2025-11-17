@@ -253,8 +253,8 @@ struct VideoFilterManager {
 
     /// AnimeGAN 모델 캐시 (재사용)
     private static let animeGANModel: MLModel? = {
-        guard let modelURL = Bundle.main.url(forResource: "AnimeGANv3_Hayao_36", withExtension: "mlmodelc") else {
-            print("[Error] AnimeGANv3_Hayao_36.mlmodelc not found")
+        guard let modelURL = Bundle.main.url(forResource: "AnimeGANv3_Hayao_36_fp16", withExtension: "mlmodelc") else {
+            print("[Error] AnimeGANv3_Hayao_36_fp16.mlmodelc not found")
             return nil
         }
 
