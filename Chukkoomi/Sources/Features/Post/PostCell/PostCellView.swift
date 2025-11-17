@@ -29,9 +29,6 @@ struct PostCellView: View {
         .alert(
             store: store.scope(state: \.$deleteAlert, action: \.deleteAlert)
         )
-//        .buttonWrapper {
-//            store.send(.postTapped)
-//        }
     }
 
     // MARK: - Header
@@ -83,15 +80,22 @@ struct PostCellView: View {
     // MARK: - Title
     private var titleView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(store.post.title)
-                .font(.body)
-                .fontWeight(.medium)
+            // 해시태그 제외한 본문만 표시
+            Text(extractContentWithoutHashtags(from: store.post.content))
+                .font(Font.appSubBody)
 
-            // 해시태그 표시
+            // 해시태그 표시 (버튼)
             if !store.post.hashTags.isEmpty {
-                Text(store.post.hashTags.map { "#\($0)" }.joined(separator: " "))
-                    .font(.caption)
-                    .foregroundColor(.blue)
+                HashtagFlowLayout(spacing: 8) {
+                    ForEach(store.post.hashTags, id: \.self) { tag in
+                        Text("#\(tag)")
+                            .font(Font.appSubBody)
+                            .foregroundColor(.blue)
+                            .buttonWrapper {
+                                store.send(.hashtagTapped(tag))
+                            }
+                    }
+                }
             }
         }
         .padding(.horizontal, 16)
@@ -161,12 +165,12 @@ struct PostCellView: View {
     
     private func followButtonView() -> some View {
         Text(store.isFollowing ? "팔로잉" : "+ 팔로우")
-            .font(.caption)
-            .foregroundColor(store.isFollowing ? .gray : .black)
+            .font(.appSubTitle)
+            .foregroundColor(.black)
             .frame(width: 80, height: 40)
             .background(
                 Capsule()
-                    .fill(store.isFollowing ? Color.gray.opacity(0.2) : Color.gray)
+                    .fill(AppColor.lightGray)
             )
             .buttonWrapper {
                 store.send(.followTapped)
@@ -177,12 +181,23 @@ struct PostCellView: View {
         AppIcon.ellipsis
             .font(.system(size: 20))
             .frame(width: 40, height: 40)
+            .foregroundStyle(.black)
             .buttonWrapper {
                 store.send(.menuTapped)
             }
     }
 
-    // MARK: - 시간 포맷 헬퍼
+    // MARK: - 헬퍼 메서드
+
+    /// 컨텐츠에서 해시태그를 제거하고 본문만 추출
+    private func extractContentWithoutHashtags(from fullContent: String) -> String {
+        // "#"으로 시작하는 단어들을 제거
+        let words = fullContent.split(separator: " ")
+        let contentWords = words.filter { !$0.hasPrefix("#") }
+        return contentWords.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// 시간 포맷 헬퍼
     private func timeAgoString(from date: Date) -> String {
         let now = Date()
         let calendar = Calendar.current
@@ -196,6 +211,67 @@ struct PostCellView: View {
             return "\(minute)분전"
         } else {
             return "방금"
+        }
+    }
+}
+
+// MARK: - HashtagFlowLayout for Hashtags
+struct HashtagFlowLayout: Layout {
+    var spacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let result = HashtagFlowLayoutResult(
+            in: proposal.replacingUnspecifiedDimensions().width,
+            subviews: subviews,
+            spacing: spacing
+        )
+        return result.size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = HashtagFlowLayoutResult(
+            in: bounds.width,
+            subviews: subviews,
+            spacing: spacing
+        )
+        for (index, subview) in subviews.enumerated() {
+            let position = CGPoint(
+                x: bounds.minX + result.positions[index].x,
+                y: bounds.minY + result.positions[index].y
+            )
+            subview.place(at: position, proposal: .unspecified)
+        }
+    }
+
+    struct HashtagFlowLayoutResult {
+        var size: CGSize = .zero
+        var positions: [CGPoint] = []
+
+        init(in maxWidth: CGFloat, subviews: Subviews, spacing: CGFloat) {
+            var currentX: CGFloat = 0
+            var currentY: CGFloat = 0
+            var lineHeight: CGFloat = 0
+
+            for subview in subviews {
+                let size = subview.sizeThatFits(.unspecified)
+
+                if currentX + size.width > maxWidth && currentX > 0 {
+                    // 다음 줄로
+                    currentX = 0
+                    currentY += lineHeight + spacing
+                    lineHeight = 0
+                }
+
+                positions.append(CGPoint(x: currentX, y: currentY))
+
+                currentX += size.width + spacing
+                lineHeight = max(lineHeight, size.height)
+            }
+
+            self.size = CGSize(
+                width: maxWidth,
+                height: currentY + lineHeight
+            )
         }
     }
 }

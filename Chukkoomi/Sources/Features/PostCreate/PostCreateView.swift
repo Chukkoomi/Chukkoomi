@@ -32,7 +32,7 @@ struct PostCreateView: View {
 
             // 업로드 버튼
             FillButton(
-                title: store.isUploading ? "업로드 중..." : "업로드",
+                title: buttonTitle,
                 isLoading: store.isUploading,
                 isEnabled: store.canUpload
             ) {
@@ -43,6 +43,8 @@ struct PostCreateView: View {
         .padding(.vertical, 16)
         .dismissKeyboardOnTap()
         .keyboardDoneButton()
+        .navigationTitle(store.navigationTitle)
+        .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(
             store: store.scope(state: \.$galleryPicker, action: \.galleryPicker)
         ) { store in
@@ -50,7 +52,7 @@ struct PostCreateView: View {
                 GalleryPickerView(store: store)
             }
         }
-        .alert("업로드 완료", isPresented: Binding(
+        .alert(alertTitle, isPresented: Binding(
             get: { store.showSuccessAlert },
             set: { _ in store.send(.dismissSuccessAlert) }
         )) {
@@ -58,8 +60,26 @@ struct PostCreateView: View {
                 store.send(.dismissSuccessAlert)
             }
         } message: {
-            Text("게시글이 성공적으로 업로드되었습니다.")
+            Text(alertMessage)
         }
+    }
+
+    // MARK: - 버튼 타이틀
+    private var buttonTitle: String {
+        if store.isUploading {
+            return store.isEditMode ? "수정 중..." : "업로드 중..."
+        } else {
+            return store.isEditMode ? "수정하기" : "업로드"
+        }
+    }
+
+    // MARK: - 알림 타이틀/메시지
+    private var alertTitle: String {
+        store.isEditMode ? "수정 완료" : "업로드 완료"
+    }
+
+    private var alertMessage: String {
+        store.isEditMode ? "게시글이 성공적으로 수정되었습니다." : "게시글이 성공적으로 업로드되었습니다."
     }
 
     // MARK: - Media Selection Section
@@ -67,7 +87,7 @@ struct PostCreateView: View {
         VStack(alignment: .leading, spacing: 8) {
             if let imageData = store.selectedImageData,
                let uiImage = UIImage(data: imageData) {
-                // 선택된 이미지/영상 표시
+                // 새로 선택된 이미지 표시
                 ZStack(alignment: .topTrailing) {
                     Image(uiImage: uiImage)
                         .resizable()
@@ -85,6 +105,36 @@ struct PostCreateView: View {
                             .font(.system(size: 24))
                             .foregroundColor(.white)
                             .background(Circle().fill(Color.black.opacity(0.5)))
+                    }
+                    .padding(8)
+                }
+            } else if let originalImageUrl = store.originalImageUrl {
+                // 수정 모드: 기존 이미지 표시
+                ZStack(alignment: .topTrailing) {
+                    AsyncMediaImageView(
+                        imagePath: originalImageUrl,
+                        width: UIScreen.main.bounds.width - 32,
+                        height: 200,
+                        onImageLoaded: { _ in }
+                    )
+                    .frame(height: 200)
+                    .background(Color.black)
+                    .cornerRadius(12)
+
+                    // 변경 버튼
+                    Button {
+                        store.send(.selectImageTapped)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "photo")
+                            Text("변경")
+                                .font(.caption)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.7))
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
                     }
                     .padding(8)
                 }

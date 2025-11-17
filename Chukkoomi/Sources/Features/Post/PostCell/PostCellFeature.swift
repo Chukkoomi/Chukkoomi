@@ -82,6 +82,7 @@ struct PostCellFeature {
         case bookmarkTapped
         case followTapped
         case menuTapped
+        case hashtagTapped(String)
 
         // Menu Actions
         case menu(PresentationAction<Menu>)
@@ -112,6 +113,7 @@ struct PostCellFeature {
             case sharePost(String)
             case editPost(String)
             case postDeleted(String)
+            case hashtagTapped(String)
         }
 
         static func == (lhs: Action, rhs: Action) -> Bool {
@@ -124,6 +126,8 @@ struct PostCellFeature {
                  (.followTapped, .followTapped),
                  (.menuTapped, .menuTapped):
                 return true
+            case let (.hashtagTapped(lhs), .hashtagTapped(rhs)):
+                return lhs == rhs
             case let (.menu(lhs), .menu(rhs)):
                 return lhs == rhs
             case let (.deleteAlert(lhs), .deleteAlert(rhs)):
@@ -178,6 +182,9 @@ struct PostCellFeature {
 
             case let .toggleResponse(toggleType, .failure(error)):
                 return handleToggleFailure(state: &state, toggleType: toggleType, error: error)
+
+            case let .hashtagTapped(hashtag):
+                return .send(.delegate(.hashtagTapped(hashtag)))
 
             case .commentTapped:
                 guard let postId = state.postId else { return .none }

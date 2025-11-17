@@ -24,6 +24,25 @@ struct PostFeature {
         var isLoading: Bool = false
         var errorMessage: String?
         var nextCursor: String?
+        var searchHashtag: String? // 해시태그 검색용
+        var teamInfo: KLeagueTeam? // 팀 정보 (팀별 게시글 조회용)
+
+        @Presents var hashtagSearch: PostFeature.State? // 해시태그 검색 화면
+        @Presents var postCreate: PostCreateFeature.State? // 게시글 작성/수정 화면
+
+        // 네비게이션 타이틀
+        var navigationTitle: String {
+            // 1순위: 해시태그 검색
+            if let hashtag = searchHashtag {
+                return "#\(hashtag)"
+            }
+            // 2순위: 팀별 게시글
+            if let team = teamInfo {
+                return team.koreanName
+            }
+            // 기본값
+            return "게시글"
+        }
     }
 
     // MARK: - Action
@@ -33,6 +52,8 @@ struct PostFeature {
         case loadMorePosts
         case postsResponse(Result<PostListResponseDTO, Error>)
         case postCell(IdentifiedActionOf<PostCellFeature>)
+        case hashtagSearch(PresentationAction<PostFeature.Action>)
+        case postCreate(PresentationAction<PostCreateFeature.Action>)
 
         static func == (lhs: Action, rhs: Action) -> Bool {
             switch (lhs, rhs) {
@@ -51,6 +72,10 @@ struct PostFeature {
                 }
             case let (.postCell(lhsAction), .postCell(rhsAction)):
                 return lhsAction == rhsAction
+            case let (.hashtagSearch(lhs), .hashtagSearch(rhs)):
+                return lhs == rhs
+            case let (.postCreate(lhs), .postCreate(rhs)):
+                return lhs == rhs
             default:
                 return false
             }
@@ -69,19 +94,40 @@ struct PostFeature {
                 state.isLoading = true
                 state.errorMessage = nil
 
-                return .run { [postService] send in
-                    do {
-                        let query = PostRouter.ListQuery(
-                            next: nil,
-                            limit: 20,
-                            category: nil  // 전체 카테고리
-                        )
+                // 해시태그 검색인지 일반 조회인지 분기
+                if let searchHashtag = state.searchHashtag {
+                    // 해시태그 검색
+                    return .run { [postService] send in
+                        do {
+                            let query = PostRouter.HashtagQuery(
+                                hashtag: searchHashtag,
+                                next: nil,
+                                limit: 20
+                            )
 
-                        let response = try await postService.fetchPosts(query: query)
+                            let response = try await postService.searchByHashtag(query: query)
 
-                        await send(.postsResponse(.success(response)))
-                    } catch {
-                        await send(.postsResponse(.failure(error)))
+                            await send(.postsResponse(.success(response)))
+                        } catch {
+                            await send(.postsResponse(.failure(error)))
+                        }
+                    }
+                } else {
+                    // 일반 게시글 조회
+                    return .run { [postService] send in
+                        do {
+                            let query = PostRouter.ListQuery(
+                                next: nil,
+                                limit: 20,
+                                category: nil  // 전체 카테고리
+                            )
+
+                            let response = try await postService.fetchPosts(query: query)
+
+                            await send(.postsResponse(.success(response)))
+                        } catch {
+                            await send(.postsResponse(.failure(error)))
+                        }
                     }
                 }
 
@@ -135,10 +181,35 @@ struct PostFeature {
 
             case .postCell:
                 return .none
+
+            case .hashtagSearch:
+                return .none
+
+            case let .postCreate(.presented(.delegate(delegateAction))):
+                // PostCreate에서의 delegate 액션 처리
+                switch delegateAction {
+                case .postCreated, .postUpdated:
+                    print("📝 게시글 작성/수정 완료 - 리스트 새로고침")
+                    // 게시글 리스트 새로고침
+                    state.postCells = []
+                    state.nextCursor = nil
+                    // PostCreate 화면 닫기
+                    state.postCreate = nil
+                    return .send(.loadPosts)
+                }
+
+            case .postCreate:
+                return .none
             }
         }
         .forEach(\.postCells, action: \.postCell) {
             PostCellFeature()
+        }
+        .ifLet(\.$hashtagSearch, action: \.hashtagSearch) {
+            PostFeature()
+        }
+        .ifLet(\.$postCreate, action: \.postCreate) {
+            PostCreateFeature()
         }
     }
 
@@ -161,13 +232,23 @@ struct PostFeature {
 
         case let .editPost(postId):
             print("✏️ 게시글 수정: \(postId)")
-            // TODO: 게시글 수정 화면으로 이동
+            // 해당 게시글 찾기
+            guard let post = state.postCells.first(where: { $0.post.id == postId })?.post else {
+                print("❌ 수정할 게시글을 찾을 수 없음: \(postId)")
+                return .none
+            }
+            // PostCreate 화면으로 네비게이션 (수정 모드)
+            state.postCreate = PostCreateFeature.State(post: post)
             return .none
 
         case let .postDeleted(postId):
-            print("🗑️ 게시글 삭제 완료: \(postId)")
             // 배열에서 해당 게시글 제거
-            state.postCells.remove(id: id)
+            state.postCells.remove(id: postId)
+            return .none
+
+        case let .hashtagTapped(hashtag):
+            // 새로운 PostFeature.State로 해시태그 검색 화면 push
+            state.hashtagSearch = PostFeature.State(searchHashtag: hashtag)
             return .none
         }
     }

@@ -12,42 +12,50 @@ struct PostView: View {
     let store: StoreOf<PostFeature>
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                if store.postCells.isEmpty && store.isLoading {
-                    // 초기 로딩
-                    ProgressView("게시글을 불러오는 중...")
-                } else if store.postCells.isEmpty && !store.isLoading {
-                    // 빈 상태
-                    emptyStateView
-                } else {
-                    // 게시글 리스트
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(
-                                store.scope(state: \.postCells, action: \.postCell)
-                            ) { cellStore in
-                                PostCellView(store: cellStore)
-                                Divider()
-                                    .padding(.vertical, 8)
-                            }
+        ZStack {
+            if store.postCells.isEmpty && store.isLoading {
+                // 초기 로딩
+                ProgressView("게시글을 불러오는 중...")
+            } else if store.postCells.isEmpty && !store.isLoading {
+                // 빈 상태
+                emptyStateView
+            } else {
+                // 게시글 리스트
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(
+                            store.scope(state: \.postCells, action: \.postCell)
+                        ) { cellStore in
+                            PostCellView(store: cellStore)
+                            Divider()
+                                .padding(.vertical, 8)
                         }
                     }
-                    .refreshable {
-                        store.send(.loadPosts)
-                    }
                 }
+                .refreshable {
+                    store.send(.loadPosts)
+                }
+            }
 
-                // 에러 메시지
-                if let errorMessage = store.errorMessage {
-                    errorBanner(message: errorMessage)
-                }
+            // 에러 메시지
+            if let errorMessage = store.errorMessage {
+                errorBanner(message: errorMessage)
             }
-            .navigationTitle("게시글")
-            .navigationBarTitleDisplayMode(.inline)
-            .onAppear {
-                store.send(.onAppear)
-            }
+        }
+        .navigationTitle(store.navigationTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(
+            store: store.scope(state: \.$hashtagSearch, action: \.hashtagSearch)
+        ) { store in
+            PostView(store: store)
+        }
+        .navigationDestination(
+            store: store.scope(state: \.$postCreate, action: \.postCreate)
+        ) { store in
+            PostCreateView(store: store)
+        }
+        .onAppear {
+            store.send(.onAppear)
         }
     }
 
