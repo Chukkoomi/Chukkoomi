@@ -36,7 +36,7 @@ struct ChatView: View {
                 // 메시지 리스트
                 ScrollViewReader { scrollProxy in
                     ScrollView {
-                        LazyVStack(spacing: 12) {
+                        LazyVStack(spacing: 8) {
                             // 페이지네이션 로딩 인디케이터
                             if viewStore.isLoading && viewStore.cursorDate != nil {
                                 ProgressView()
