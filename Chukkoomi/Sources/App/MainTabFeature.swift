@@ -10,14 +10,15 @@ import Foundation
 
 @Reducer
 struct MainTabFeature {
-
+    
     // MARK: - State
     struct State: Equatable {
         var selectedTab: Tab = .home
+        var home = HomeFeature.State()
         var search = SearchFeature.State()
         var myProfile = MyProfileFeature.State()
         var chatList = ChatListFeature.State()
-
+        
         enum Tab: Equatable, CaseIterable {
             case home
             case search
@@ -26,10 +27,11 @@ struct MainTabFeature {
             case profile
         }
     }
-
+    
     // MARK: - Action
     enum Action: Equatable {
         case tabSelected(State.Tab)
+        case home(HomeFeature.Action)
         case search(SearchFeature.Action)
         case myProfile(MyProfileFeature.Action)
         case chatList(ChatListFeature.Action)
@@ -39,27 +41,34 @@ struct MainTabFeature {
             case logout
         }
     }
-
+    
     // MARK: - Body
     var body: some ReducerOf<Self> {
+        Scope(state: \.home, action: \.home) {
+            HomeFeature()
+        }
+        
         Scope(state: \.search, action: \.search) {
             SearchFeature()
         }
-
+        
         Scope(state: \.myProfile, action: \.myProfile) {
             MyProfileFeature()
         }
-
+        
         Scope(state: \.chatList, action: \.chatList) {
             ChatListFeature()
         }
-
+        
         Reduce { state, action in
             switch action {
             case .tabSelected(let tab):
                 state.selectedTab = tab
                 return .none
 
+            case .home:
+                return .none
+                
             case .search:
                 return .none
 
@@ -68,7 +77,7 @@ struct MainTabFeature {
 
             case .myProfile:
                 return .none
-
+                
             case .chatList:
                 return .none
 
