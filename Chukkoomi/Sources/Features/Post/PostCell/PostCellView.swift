@@ -7,6 +7,7 @@
 
 import SwiftUI
 import ComposableArchitecture
+import AVKit
 
 struct PostCellView: View {
     let store: StoreOf<PostCellFeature>
@@ -18,7 +19,6 @@ struct PostCellView: View {
             titleView
 
             mediaContentView
-
 
             actionBarView
         }
@@ -105,14 +105,23 @@ struct PostCellView: View {
     @ViewBuilder
     private var mediaContentView: some View {
         if let firstFile = store.post.files.first {
-            GeometryReader { geometry in
-                AsyncMediaImageView(
-                    imagePath: firstFile,
-                    width: geometry.size.width,
-                    height: 300
-                )
+            let isVideo = MediaTypeHelper.isVideoPath(firstFile)
+
+            if isVideo {
+                // 비디오 재생
+                URLMediaPlayerView(mediaPath: firstFile)
+                    .frame(height: 300)
+            } else {
+                // 이미지 표시
+                GeometryReader { geometry in
+                    AsyncMediaImageView(
+                        imagePath: firstFile,
+                        width: geometry.size.width,
+                        height: 300
+                    )
+                }
+                .frame(height: 300)
             }
-            .frame(height: 300)
         }
     }
 
@@ -191,10 +200,24 @@ struct PostCellView: View {
 
     /// 컨텐츠에서 해시태그를 제거하고 본문만 추출
     private func extractContentWithoutHashtags(from fullContent: String) -> String {
-        // "#"으로 시작하는 단어들을 제거
-        let words = fullContent.split(separator: " ")
-        let contentWords = words.filter { !$0.hasPrefix("#") }
-        return contentWords.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        // 정규식으로 해시태그 패턴 제거 (#으로 시작하고 공백이나 #이 아닌 문자들)
+        let pattern = "#[^\\s#]+"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return fullContent
+        }
+
+        let range = NSRange(location: 0, length: fullContent.utf16.count)
+        let result = regex.stringByReplacingMatches(
+            in: fullContent,
+            options: [],
+            range: range,
+            withTemplate: ""
+        )
+
+        // 여러 개의 연속된 공백을 하나로 줄이고 양쪽 공백 제거
+        return result
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// 시간 포맷 헬퍼
@@ -211,6 +234,95 @@ struct PostCellView: View {
             return "\(minute)분전"
         } else {
             return "방금"
+        }
+    }
+}
+
+// MARK: - URLMediaPlayerView
+struct URLMediaPlayerView: View {
+    let mediaPath: String
+    @State private var player: AVPlayer?
+    @State private var isLoading = true
+
+    var body: some View {
+        ZStack {
+            Color.black
+
+            if let player = player {
+                VideoPlayer(player: player)
+                    .onAppear {
+                        player.play()
+                    }
+                    .onDisappear {
+                        player.pause()
+                    }
+            } else if isLoading {
+                ProgressView()
+                    .tint(.white)
+            } else {
+                // 로드 실패
+                VStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 40))
+                        .foregroundColor(.white)
+                    Text("동영상을 불러올 수 없습니다")
+                        .font(.caption)
+                        .foregroundColor(.white)
+                }
+            }
+        }
+        .task(id: mediaPath) {
+            await loadVideo()
+        }
+    }
+
+    private func loadVideo() async {
+        isLoading = true
+
+        do {
+            let videoData: Data
+
+            // TODO: picsum 테스트용 임시 코드 - 나중에 삭제
+            if mediaPath.hasPrefix("http://") || mediaPath.hasPrefix("https://") {
+                // 외부 URL: URLSession으로 직접 다운로드
+                guard let url = URL(string: mediaPath) else {
+                    isLoading = false
+                    return
+                }
+                let (data, _) = try await URLSession.shared.data(from: url)
+                videoData = data
+            } else {
+                // 실제 사용 코드: 서버에서 다운로드
+                videoData = try await NetworkManager.shared.download(
+                    MediaRouter.getData(path: mediaPath)
+                )
+            }
+
+            // 임시 파일로 저장 (AVPlayer는 URL이 필요)
+            let tempURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent(UUID().uuidString)
+                .appendingPathExtension("mp4")
+
+            try videoData.write(to: tempURL)
+
+            // AVPlayer 생성
+            let playerItem = AVPlayerItem(url: tempURL)
+            let avPlayer = AVPlayer(playerItem: playerItem)
+
+            await MainActor.run {
+                self.player = avPlayer
+                self.isLoading = false
+            }
+        } catch is CancellationError {
+            // Task가 취소되었을 때는 로그를 남기지 않음
+            await MainActor.run {
+                self.isLoading = false
+            }
+        } catch {
+            print("동영상 로드 실패: \(error)")
+            await MainActor.run {
+                self.isLoading = false
+            }
         }
     }
 }

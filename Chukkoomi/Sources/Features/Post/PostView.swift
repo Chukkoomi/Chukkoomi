@@ -57,6 +57,7 @@ struct PostView: View {
         .onAppear {
             store.send(.onAppear)
         }
+        .toolbar(.hidden, for: .tabBar)
     }
 
     // MARK: - Empty State
