@@ -343,14 +343,14 @@ struct ChatView: View {
                 if index > 0 {
                     try? await Task.sleep(nanoseconds: 300_000_000) // 0.3초 간격
                 }
-                await MainActor.run {
+                _ = await MainActor.run {
                     viewStore.send(.uploadAndSendFiles([video]))
                 }
             }
 
             // 이미지는 한 번에 묶어서 전송
             if !imageData.isEmpty {
-                await MainActor.run {
+                _ = await MainActor.run {
                     viewStore.send(.uploadAndSendFiles(imageData))
                 }
             }
