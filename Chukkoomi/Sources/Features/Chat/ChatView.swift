@@ -428,8 +428,5 @@ struct MessageRow: View {
                 }
             }
         }
-        .padding(4)
-        .background(isMyMessage ? AppColor.disabled : Color.gray.opacity(0.2))
-        .cornerRadius(12)
     }
 }
