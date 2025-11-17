@@ -123,7 +123,7 @@ struct ChatListFeature: Reducer {
                 return .none
 
             case .userSearchButtonTapped:
-                state.userSearch = UserSearchFeature.State()
+                state.userSearch = UserSearchFeature.State(excludeMyself: false)
                 return .none
 
             case .userSearch:

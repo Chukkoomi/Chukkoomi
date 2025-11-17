@@ -113,7 +113,7 @@ struct OtherProfileFeature {
             // 기존 채팅방이 있는지 확인하기 위해 채팅방 리스트 조회
             guard let profile = state.profile else { return .none }
 
-            return .run { [userId = profile.userId] send in
+            return .run { [userId = profile.userId, myUserId = state.myUser?.userId] send in
                 do {
                     let response = try await NetworkManager.shared.performRequest(
                         ChatRouter.getChatRoomList,
@@ -123,7 +123,18 @@ struct OtherProfileFeature {
 
                     // 해당 사용자와의 기존 채팅방 찾기
                     let existingChatRoom = chatRooms.first { chatRoom in
-                        chatRoom.participants.contains { $0.userId == userId }
+                        // 1:1 채팅방만 확인
+                        guard chatRoom.participants.count == 2 else { return false }
+
+                        // 자신과의 채팅방인 경우
+                        if userId == myUserId {
+                            // 모든 participants가 자신인 채팅방
+                            return chatRoom.participants.allSatisfy { $0.userId == myUserId }
+                        }
+
+                        // 다른 사람과의 채팅방: participants에 상대방과 자신이 모두 포함
+                        return chatRoom.participants.contains { $0.userId == userId } &&
+                               chatRoom.participants.contains { $0.userId == myUserId }
                     }
 
                     await send(.chatRoomChecked(existingChatRoom))
