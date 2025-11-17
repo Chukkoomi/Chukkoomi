@@ -18,11 +18,18 @@ struct MainTabView: View {
                 send: { .tabSelected($0) }
             )) {
                 // Home Tab
-                ContentView()
-                    .tabItem {
-                        tabIcon(for: .home)
-                    }
-                    .tag(MainTabFeature.State.Tab.home)
+                NavigationStack {
+                    HomeView(
+                        store: store.scope(
+                            state: \.home,
+                            action: \.home
+                        )
+                    )
+                }
+                .tabItem {
+                    tabIcon(for: .home)
+                }
+                .tag(MainTabFeature.State.Tab.home)
 
                 // Search Tab
                 NavigationStack {
@@ -38,11 +45,16 @@ struct MainTabView: View {
                 .tag(MainTabFeature.State.Tab.search)
 
                 // Post Tab
-                ContentView()
-                    .tabItem {
-                        tabIcon(for: .post)
-                    }
-                    .tag(MainTabFeature.State.Tab.post)
+                EmptyForVideoView(
+                    store: store.scope(
+                        state: \.post,
+                        action: \.post
+                    )
+                )
+                .tabItem {
+                    tabIcon(for: .post)
+                }
+                .tag(MainTabFeature.State.Tab.post)
 
                 // Chat Tab
                 NavigationStack {

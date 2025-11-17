@@ -8,15 +8,20 @@
 import ComposableArchitecture
 import SwiftUI
 
-struct HomeFeature: Reducer {
+@Reducer
+struct HomeFeature {
 
     // MARK: - State
+    @ObservableState
     struct State: Equatable {
         var teams: [KLeagueTeam] = KLeagueTeam.allTeams
         var matches: [Match] = []
         var isShowingAllTeams: Bool = false
         var isLoading: Bool = false
         var isLoadingMatches: Bool = false
+
+        // PostView 네비게이션
+        @Presents var postList: PostFeature.State?
     }
 
     // MARK: - Action
@@ -26,6 +31,9 @@ struct HomeFeature: Reducer {
         case loadMatches
         case loadMatchesResponse(Result<[Match], Error>)
         case teamTapped(String) // team ID
+
+        // PostView 네비게이션
+        case postList(PresentationAction<PostFeature.Action>)
 
         static func == (lhs: Action, rhs: Action) -> Bool {
             switch (lhs, rhs) {
@@ -37,6 +45,8 @@ struct HomeFeature: Reducer {
                 return lhsId == rhsId
             case (.loadMatchesResponse, .loadMatchesResponse):
                 return true
+            case (.postList, .postList):
+                return true
             default:
                 return false
             }
@@ -44,13 +54,14 @@ struct HomeFeature: Reducer {
     }
 
     // MARK: - Reducer
-    func reduce(into state: inout State, action: Action) -> Effect<Action> {
-        switch action {
-        case .onAppear:
-            // 경기 데이터 로드
-            return .send(.loadMatches)
+    var body: some ReducerOf<Self> {
+        Reduce { state, action in
+            switch action {
+            case .onAppear:
+                // 경기 데이터 로드
+                return .send(.loadMatches)
 
-        case .loadMatches:
+            case .loadMatches:
             // 이미 데이터가 있으면 로드하지 않음
             guard state.matches.isEmpty else {
                 print("이미 경기 데이터가 로드되어 있습니다.")
@@ -134,25 +145,74 @@ struct HomeFeature: Reducer {
                 }
             }
 
-        case .toggleShowAllTeams:
-            state.isShowingAllTeams.toggle()
-            return .none
+            case .toggleShowAllTeams:
+                state.isShowingAllTeams.toggle()
+                return .none
 
-        case let .teamTapped(teamId):
-            // TODO: 구단 상세 화면으로 이동
-            print("Team tapped: \(teamId)")
-            return .none
+            case let .teamTapped(teamId):
+                // PostView로 네비게이션 (일단 전체 카테고리로)
+                print("Team tapped: \(teamId)")
+                state.postList = PostFeature.State()
+                return .none
 
-        case let .loadMatchesResponse(.success(matches)):
-            state.isLoadingMatches = false
-            state.matches = matches
-            print("경기 데이터 로드 완료: \(matches.count)개")
-            return .none
+            case let .loadMatchesResponse(.success(matches)):
+                state.isLoadingMatches = false
+                state.matches = matches
+                print("경기 데이터 로드 완료: \(matches.count)개")
+                return .none
 
-        case let .loadMatchesResponse(.failure(error)):
-            state.isLoadingMatches = false
-            print("경기 데이터 로드 실패: \(error)")
-            return .none
+            case let .loadMatchesResponse(.failure(error)):
+                state.isLoadingMatches = false
+                print("경기 데이터 로드 실패: \(error)")
+                return .none
+
+            case .postList:
+                return .none
+            }
         }
+        .ifLet(\.$postList, action: \.postList) {
+            PostFeature()
+        }
+    }
+}
+
+// MARK: - Dummy Data
+extension HomeFeature {
+    /// 경기 일정이 없을 때 보여줄 더미 경기 데이터 생성
+    /// - Returns: 오늘 날짜 기준 3개의 더미 경기
+    static func createDummyMatches() -> [Match] {
+        let today = Date()
+        let calendar = Calendar.current
+
+        // K리그 팀 목록
+        let teams = KLeagueTeam.allTeams
+
+        // 더미 경기 3개 생성
+        return [
+            Match(
+                id: -1,
+                date: calendar.date(byAdding: .hour, value: 2, to: today) ?? today,
+                homeTeamName: teams[0].koreanName, // 울산 HD FC
+                awayTeamName: teams[1].koreanName, // 전북 현대 모터스
+                homeScore: nil,
+                awayScore: nil
+            ),
+            Match(
+                id: -2,
+                date: calendar.date(byAdding: .hour, value: 5, to: today) ?? today,
+                homeTeamName: teams[2].koreanName, // 포항 스틸러스
+                awayTeamName: teams[8].koreanName, // FC 서울
+                homeScore: nil,
+                awayScore: nil
+            ),
+            Match(
+                id: -3,
+                date: calendar.date(byAdding: .hour, value: 7, to: today) ?? today,
+                homeTeamName: teams[6].koreanName, // 제주 유나이티드
+                awayTeamName: teams[3].koreanName, // 수원 FC
+                homeScore: nil,
+                awayScore: nil
+            )
+        ]
     }
 }

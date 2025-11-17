@@ -38,7 +38,19 @@ struct AppFeature {
             case .onAppear:
                 // 앱 시작 시 인증 상태 체크
                 return .run { send in
-                    let hasValidToken = await checkAuthentication()
+                    var hasValidToken = await checkAuthentication()
+
+                    // 토큰은 있는데 userId가 없으면 프로필 조회
+                    if hasValidToken, UserDefaultsHelper.userId == nil {
+                        do {
+                            let profile = try await NetworkManager.shared.performRequest(ProfileRouter.lookupMe, as: ProfileDTO.self).toDomain
+                            UserDefaultsHelper.userId = profile.userId
+                        } catch {
+                            // 프로필 조회 실패 시 로그인 화면으로
+                            hasValidToken = false
+                        }
+                    }
+
                     await send(.checkAuthenticationResult(hasValidToken))
                 }
 
@@ -68,9 +80,27 @@ struct AppFeature {
             case .login:
                 return .none
 
+            case .mainTab(.delegate(.logout)):
+                return .send(.logout)
+
             case .mainTab:
                 return .none
 
+            case .logout:
+                // 아직 state를 변경하지 않음 - child reducer가 먼저 처리하도록
+                return .none
+            }
+        }
+        .ifLet(\.loginState, action: \.login) {
+            LoginFeature()
+        }
+        .ifLet(\.mainTabState, action: \.mainTab) {
+            MainTabFeature()
+        }
+
+        // child reducer 이후에 실행되는 parent reducer
+        Reduce { state, action in
+            switch action {
             case .logout:
                 // 로그아웃 - LoginView로 전환
                 state.isLoggedIn = false
@@ -80,14 +110,14 @@ struct AppFeature {
                 // Keychain 토큰 삭제
                 KeychainManager.shared.deleteAll()
 
+                // UserDefaults userId 삭제
+                UserDefaultsHelper.userId = nil
+
+                return .none
+
+            default:
                 return .none
             }
-        }
-        .ifLet(\.loginState, action: \.login) {
-            LoginFeature()
-        }
-        .ifLet(\.mainTabState, action: \.mainTab) {
-            MainTabFeature()
         }
     }
 

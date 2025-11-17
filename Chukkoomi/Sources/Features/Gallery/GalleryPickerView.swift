@@ -8,6 +8,7 @@
 import SwiftUI
 import ComposableArchitecture
 import Photos
+import AVKit
 
 struct GalleryPickerView: View {
     let store: StoreOf<GalleryPickerFeature>
@@ -23,7 +24,7 @@ struct GalleryPickerView: View {
                     Text("최근 항목")
                         .font(.appBody)
                         .fontWeight(.semibold)
-                        .foregroundColor(.primary)
+                        .foregroundStyle(.black)
                     Spacer()
                 }
                 .padding(.horizontal, AppPadding.large)
@@ -37,10 +38,11 @@ struct GalleryPickerView: View {
                     Spacer()
                 } else {
                     mediaGrid(viewStore: viewStore)
+                        .padding(.horizontal, 4)
                 }
             }
             .background(Color(uiColor: .systemBackground))
-            .navigationTitle("사진 선택")
+            .navigationTitle(viewStore.pickerMode == .profileImage ? "사진 선택" : "미디어 선택")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.light, for: .navigationBar)
@@ -50,7 +52,7 @@ struct GalleryPickerView: View {
                         viewStore.send(.cancel)
                     } label: {
                         AppIcon.xmark
-                            .foregroundColor(.primary)
+                            .foregroundStyle(.black)
                     }
                 }
 
@@ -59,7 +61,7 @@ struct GalleryPickerView: View {
                         viewStore.send(.confirmSelection)
                     } label: {
                         Text(viewStore.pickerMode.buttonTitle)
-                            .foregroundColor(viewStore.selectedItem != nil ? .primary : .gray)
+                            .foregroundStyle(viewStore.selectedItem != nil ? .black : .gray)
                     }
                     .disabled(viewStore.selectedItem == nil)
                 }
@@ -67,6 +69,8 @@ struct GalleryPickerView: View {
             .onAppear {
                 viewStore.send(.onAppear)
             }
+            // 네비게이션 연결
+            .modifier(GalleryPickerNavigation(store: store))
         }
     }
 
@@ -116,40 +120,57 @@ struct GalleryPickerView: View {
                             VStack(spacing: AppPadding.medium) {
                                 AppIcon.photo
                                     .font(.system(size: 50))
-                                    .foregroundColor(.gray)
+                                    .foregroundStyle(.gray)
                                 Text("선택된 사진이 없습니다")
                                     .font(.appBody)
-                                    .foregroundColor(.gray)
+                                    .foregroundStyle(.gray)
                             }
                         }
                 }
             } else {
-                // 게시물 모드
-                if let image = viewStore.selectedImage {
-                    ZStack {
-                        Color.black
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFit()
-                    }
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 300)
-                    .clipped()
-                } else {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(height: 300)
-                        .overlay {
-                            VStack(spacing: AppPadding.medium) {
-                                AppIcon.photo
-                                    .font(.system(size: 50))
-                                    .foregroundColor(.gray)
-                                Text("선택된 사진이 없습니다")
-                                    .font(.appBody)
-                                    .foregroundColor(.gray)
+                // 게시물 모드 (16:9 비율)
+                Color.clear
+                    .aspectRatio(16/9, contentMode: .fit)
+                    .overlay {
+                        GeometryReader { geometry in
+                            let width = geometry.size.width
+                            let height = geometry.size.height
+
+                            if let selectedItem = viewStore.selectedItem {
+                                if selectedItem.mediaType == .video {
+                                    // 비디오 재생
+                                    AssetVideoPlayerView(asset: selectedItem.asset)
+                                        .frame(width: width, height: height)
+                                        .id(selectedItem.id)  // asset이 바뀌면 뷰를 새로 생성
+                                } else if let image = viewStore.selectedImage {
+                                    // 이미지 표시
+                                    ZStack {
+                                        Color.black
+                                        Image(uiImage: image)
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: width, height: height)
+                                            .clipped()
+                                    }
+                                    .frame(width: width, height: height)
+                                }
+                            } else {
+                                Rectangle()
+                                    .fill(Color.gray.opacity(0.3))
+                                    .frame(width: width, height: height)
+                                    .overlay {
+                                        VStack(spacing: AppPadding.medium) {
+                                            AppIcon.photo
+                                                .font(.system(size: 50))
+                                                .foregroundStyle(.gray)
+                                            Text("선택된 미디어가 없습니다")
+                                                .font(.appBody)
+                                                .foregroundStyle(.gray)
+                                        }
+                                    }
                             }
                         }
-                }
+                    }
             }
         }
     }
@@ -175,6 +196,8 @@ struct GalleryPickerView: View {
     private func mediaGridItem(item: GalleryPickerFeature.MediaItem, viewStore: ViewStoreOf<GalleryPickerFeature>) -> some View {
         GeometryReader { geometry in
             AssetImageView(asset: item.asset, size: geometry.size)
+                .frame(width: geometry.size.width, height: geometry.size.width)
+                .clipped()
                 .overlay(
                     Group {
                         // 비디오 표시
@@ -185,7 +208,7 @@ struct GalleryPickerView: View {
                                     Spacer()
                                     Text(formatDuration(duration))
                                         .font(.appCaption)
-                                        .foregroundColor(.white)
+                                        .foregroundStyle(.white)
                                         .padding(4)
                                         .background(Color.black.opacity(0.6))
                                         .clipShape(RoundedRectangle(cornerRadius: 4))
@@ -204,6 +227,7 @@ struct GalleryPickerView: View {
                         }
                     }
                 )
+                .contentShape(Rectangle())
                 .onTapGesture {
                     viewStore.send(.mediaItemSelected(item))
                 }
@@ -266,15 +290,89 @@ struct AssetImageView: View {
     }
 }
 
-// MARK: - Preview
-//#Preview {
-//    NavigationStack {
-//        GalleryPickerView(
-//            store: Store(
-//                initialState: GalleryPickerFeature.State()
-//            ) {
-//                GalleryPickerFeature()
-//            }
-//        )
-//    }
-//}
+// MARK: - AssetVideoPlayerView
+struct AssetVideoPlayerView: View {
+    let asset: PHAsset
+    @State private var player: AVPlayer?
+    @State private var isLoading = true
+    @State private var requestID: PHImageRequestID?
+
+    var body: some View {
+        ZStack {
+            Color.black
+
+            if let player = player {
+                VideoPlayer(player: player)
+                    .onAppear {
+                        player.play()
+                    }
+                    .onDisappear {
+                        player.pause()
+                    }
+            } else if isLoading {
+                ProgressView()
+                    .tint(.white)
+            }
+        }
+        .onAppear {
+            loadVideo()
+        }
+        .onDisappear {
+            cleanup()
+        }
+    }
+
+    private func loadVideo() {
+        // 상태 초기화
+        isLoading = true
+
+        let options = PHVideoRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .highQualityFormat
+
+        let id = PHImageManager.default().requestPlayerItem(forVideo: asset, options: options) { [assetID = asset.localIdentifier] playerItem, _ in
+            DispatchQueue.main.async {
+                // 현재 asset과 동일한지 확인 (다른 비디오로 전환되지 않았는지)
+                guard assetID == self.asset.localIdentifier else { return }
+
+                if let playerItem = playerItem {
+                    self.player = AVPlayer(playerItem: playerItem)
+                    self.isLoading = false
+                }
+            }
+        }
+        requestID = id
+    }
+
+    private func cleanup() {
+        // 진행 중인 요청 취소
+        if let requestID = requestID {
+            PHImageManager.default().cancelImageRequest(requestID)
+            self.requestID = nil
+        }
+
+        // 플레이어 정리
+        player?.pause()
+        player = nil
+        isLoading = true
+    }
+}
+
+// MARK: - Navigation 구성
+private struct GalleryPickerNavigation: ViewModifier {
+    let store: StoreOf<GalleryPickerFeature>
+
+    func body(content: Content) -> some View {
+        content
+            .navigationDestination(
+                store: store.scope(state: \.$editVideo, action: \.editVideo)
+            ) { store in
+                EditVideoView(store: store)
+            }
+            .navigationDestination(
+                store: store.scope(state: \.$editPhoto, action: \.editPhoto)
+            ) { _ in
+                Text("EditPhotoView 구현 필요")
+            }
+    }
+}
