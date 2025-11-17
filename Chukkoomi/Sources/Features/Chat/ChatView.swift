@@ -276,16 +276,19 @@ struct MessageRow: View {
     let opponentProfileImage: UIImage?
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: .top, spacing: 8) {
             if isMyMessage {
                 Spacer(minLength: 60)
 
-                // 내 메시지: 시간이 왼쪽
-                Text(DateFormatters.formatChatMessageTime(message.createdAt))
-                    .font(.system(size: 11))
-                    .foregroundColor(.gray)
+                HStack(alignment: .bottom, spacing: 8) {
+                    // 내 메시지: 시간이 왼쪽
+                    Text(DateFormatters.formatChatMessageTime(message.createdAt))
+                        .font(.system(size: 11))
+                        .foregroundColor(.gray)
+                        .fixedSize()
 
-                messageContent
+                    messageContent
+                }
             } else {
                 // 상대방 프로필 이미지
                 if let profileImage = opponentProfileImage {
@@ -305,12 +308,22 @@ struct MessageRow: View {
                         )
                 }
 
-                messageContent
+                VStack(alignment: .leading, spacing: 4) {
+                    // 닉네임
+                    Text(message.sender.nick)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.primary)
 
-                // 받은 메시지: 시간이 오른쪽
-                Text(DateFormatters.formatChatMessageTime(message.createdAt))
-                    .font(.system(size: 11))
-                    .foregroundColor(.gray)
+                    HStack(alignment: .bottom, spacing: 8) {
+                        messageContent
+
+                        // 받은 메시지: 시간이 오른쪽
+                        Text(DateFormatters.formatChatMessageTime(message.createdAt))
+                            .font(.system(size: 11))
+                            .foregroundColor(.gray)
+                            .fixedSize()
+                    }
+                }
 
                 Spacer(minLength: 60)
             }
