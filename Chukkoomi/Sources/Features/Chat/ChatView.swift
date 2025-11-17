@@ -8,6 +8,7 @@
 import SwiftUI
 import ComposableArchitecture
 import PhotosUI
+import UniformTypeIdentifiers
 
 struct ChatView: View {
 
@@ -81,8 +82,8 @@ struct ChatView: View {
 
                 // 메시지 입력창
                 HStack(spacing: 12) {
-                    // 이미지 선택 버튼
-                    PhotosPicker(selection: $selectedPhotosItems, maxSelectionCount: 5, matching: .images) {
+                    // 이미지/영상 선택 버튼
+                    PhotosPicker(selection: $selectedPhotosItems, maxSelectionCount: 5, matching: .any(of: [.images, .videos])) {
                         Image(systemName: "photo")
                             .foregroundColor(.blue)
                             .font(.system(size: 22))
@@ -189,7 +190,7 @@ struct ChatView: View {
         }
     }
 
-    // 사진 선택 처리
+    // 사진/영상 선택 처리
     private func handlePhotosSelection(newValue: [PhotosPickerItem], viewStore: ViewStoreOf<ChatFeature>) {
         guard !newValue.isEmpty, !isProcessingPhotos else { return }
 
@@ -199,20 +200,41 @@ struct ChatView: View {
         isProcessingPhotos = true
 
         Task {
-            var filesData: [Data] = []
+            var imageData: [Data] = []
+            var videoData: [Data] = []
 
             for item in itemsToProcess {
+                // 영상인지 이미지인지 확인
+                let isVideo = item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) })
+
                 if let data = try? await item.loadTransferable(type: Data.self) {
-                    filesData.append(data)
+                    if isVideo {
+                        videoData.append(data)
+                    } else {
+                        imageData.append(data)
+                    }
                 }
             }
 
             // 메인 스레드에서 상태 업데이트
             await MainActor.run {
                 isProcessingPhotos = false
+            }
 
-                if !filesData.isEmpty {
-                    viewStore.send(.uploadAndSendFiles(filesData))
+            // 영상은 각각 별도로 전송 (간격을 두고)
+            for (index, video) in videoData.enumerated() {
+                if index > 0 {
+                    try? await Task.sleep(nanoseconds: 300_000_000) // 0.3초 간격
+                }
+                await MainActor.run {
+                    viewStore.send(.uploadAndSendFiles([video]))
+                }
+            }
+
+            // 이미지는 한 번에 묶어서 전송
+            if !imageData.isEmpty {
+                await MainActor.run {
+                    viewStore.send(.uploadAndSendFiles(imageData))
                 }
             }
         }
@@ -311,15 +333,103 @@ struct MessageRow: View {
 
             // 이미지 파일
             if !message.files.isEmpty {
-                ForEach(message.files, id: \.self) { filePath in
+                imageGridView(files: message.files)
+            }
+        }
+    }
+
+    // 이미지 그리드 레이아웃
+    @ViewBuilder
+    private func imageGridView(files: [String]) -> some View {
+        let count = files.count
+
+        Group {
+            switch count {
+            case 1:
+                // 1개: 단일 이미지
+                AsyncMediaImageView(
+                    imagePath: files[0],
+                    width: 200,
+                    height: 200
+                )
+                .cornerRadius(8)
+
+            case 2:
+                // 2개: 한 줄에 표시
+                HStack(spacing: 2) {
+                    ForEach(Array(files.enumerated()), id: \.offset) { index, filePath in
+                        AsyncMediaImageView(
+                            imagePath: filePath,
+                            width: 98,
+                            height: 98
+                        )
+                        .cornerRadius(6)
+                    }
+                }
+
+            case 3:
+                // 3개: 윗줄 2개, 아랫줄 1개 (꽉 차게)
+                VStack(spacing: 2) {
+                    HStack(spacing: 2) {
+                        AsyncMediaImageView(imagePath: files[0], width: 98, height: 98)
+                            .cornerRadius(6)
+                        AsyncMediaImageView(imagePath: files[1], width: 98, height: 98)
+                            .cornerRadius(6)
+                    }
+                    AsyncMediaImageView(imagePath: files[2], width: 198, height: 98)
+                        .cornerRadius(6)
+                }
+
+            case 4:
+                // 4개: 2x2 그리드
+                VStack(spacing: 2) {
+                    HStack(spacing: 2) {
+                        AsyncMediaImageView(imagePath: files[0], width: 98, height: 98)
+                            .cornerRadius(6)
+                        AsyncMediaImageView(imagePath: files[1], width: 98, height: 98)
+                            .cornerRadius(6)
+                    }
+                    HStack(spacing: 2) {
+                        AsyncMediaImageView(imagePath: files[2], width: 98, height: 98)
+                            .cornerRadius(6)
+                        AsyncMediaImageView(imagePath: files[3], width: 98, height: 98)
+                            .cornerRadius(6)
+                    }
+                }
+
+            case 5:
+                // 5개: 윗줄 2개, 아랫줄 3개
+                VStack(spacing: 2) {
+                    HStack(spacing: 2) {
+                        AsyncMediaImageView(imagePath: files[0], width: 98, height: 98)
+                            .cornerRadius(6)
+                        AsyncMediaImageView(imagePath: files[1], width: 98, height: 98)
+                            .cornerRadius(6)
+                    }
+                    HStack(spacing: 2) {
+                        AsyncMediaImageView(imagePath: files[2], width: 64, height: 64)
+                            .cornerRadius(6)
+                        AsyncMediaImageView(imagePath: files[3], width: 64, height: 64)
+                            .cornerRadius(6)
+                        AsyncMediaImageView(imagePath: files[4], width: 64, height: 64)
+                            .cornerRadius(6)
+                    }
+                }
+
+            default:
+                // 그 외: 기본 처리 (1개씩 표시)
+                ForEach(files, id: \.self) { filePath in
                     AsyncMediaImageView(
                         imagePath: filePath,
                         width: 200,
                         height: 200
                     )
-                    .cornerRadius(12)
+                    .cornerRadius(8)
                 }
             }
         }
+        .padding(4)
+        .background(isMyMessage ? Color.blue : Color.gray.opacity(0.2))
+        .cornerRadius(12)
     }
 }
