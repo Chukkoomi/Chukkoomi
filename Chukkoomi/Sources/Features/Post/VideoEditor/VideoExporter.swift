@@ -182,6 +182,9 @@ struct VideoExporter {
             throw ExportError.failedToCreateExportSession
         }
 
+        // 하드웨어 가속 활성화
+        exportSession.shouldOptimizeForNetworkUse = false  // 로컬 재생 최적화
+
         // 비디오 컴포지션 설정 (필터가 있는 경우)
         if let videoComposition = videoComposition {
             exportSession.videoComposition = videoComposition

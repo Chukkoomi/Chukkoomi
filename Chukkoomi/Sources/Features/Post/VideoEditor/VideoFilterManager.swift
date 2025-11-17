@@ -10,6 +10,7 @@ import AVFoundation
 @preconcurrency import CoreImage
 import Vision
 import CoreML
+import Metal
 
 /// 비디오 필터 타입
 enum VideoFilter: String, CaseIterable, Equatable {
@@ -48,7 +49,7 @@ struct VideoFilterManager {
         let naturalSize = try? await videoTrack.load(.naturalSize)
         let preferredTransform = try? await videoTrack.load(.preferredTransform)
 
-        // AVVideoComposition 생성
+        // AVVideoComposition 생성 (GPU 가속 컨텍스트 사용)
         let composition = AVMutableVideoComposition(
             asset: asset,
             applyingCIFiltersWithHandler: { request in
@@ -57,7 +58,9 @@ struct VideoFilterManager {
 
                 // 필터별로 CIFilter 생성 및 적용 (원본과 clamped 버전 모두 전달)
                 let output = applyFilter(filter, to: clampedSource, originalImage: source)
-                request.finish(with: output, context: nil)
+
+                // GPU 가속 컨텍스트를 명시적으로 전달
+                request.finish(with: output, context: gpuContext)
             }
         )
 
@@ -164,13 +167,13 @@ struct VideoFilterManager {
             return image
         }
 
-        guard let modelURL = Bundle.main.url(forResource: "AnimeGANv3_Hayao_36", withExtension: "mlmodelc") else {
-            print("[Error] AnimeGANv3_Hayao_36.mlmodelc not found")
+        // 캐싱된 모델 사용
+        guard let mlModel = animeGANModel else {
+            print("[Error] AnimeGAN model not available")
             return image
         }
 
         do {
-            let mlModel = try MLModel(contentsOf: modelURL)
 
             // 모델의 입력 크기 가져오기
             guard let inputName = mlModel.modelDescription.inputDescriptionsByName.keys.first,
@@ -249,14 +252,48 @@ struct VideoFilterManager {
         }
     }
 
-    /// CIImage를 CVPixelBuffer로 변환
+    /// GPU 가속 CIContext (재사용)
+    private static let gpuContext: CIContext = {
+        if let metalDevice = MTLCreateSystemDefaultDevice() {
+            // Metal GPU 사용
+            return CIContext(mtlDevice: metalDevice, options: [
+                .useSoftwareRenderer: false,
+                .priorityRequestLow: false
+            ])
+        } else {
+            // Metal 사용 불가시 기본 컨텍스트
+            return CIContext(options: [.useSoftwareRenderer: false])
+        }
+    }()
+
+    /// AnimeGAN 모델 캐시 (재사용)
+    private static let animeGANModel: MLModel? = {
+        guard let modelURL = Bundle.main.url(forResource: "AnimeGANv3_Hayao_36", withExtension: "mlmodelc") else {
+            print("[Error] AnimeGANv3_Hayao_36.mlmodelc not found")
+            return nil
+        }
+
+        do {
+            // GPU 사용 설정
+            let config = MLModelConfiguration()
+            config.computeUnits = .all  // CPU, GPU, Neural Engine 모두 사용
+
+            return try MLModel(contentsOf: modelURL, configuration: config)
+        } catch {
+            print("[Error] Failed to load AnimeGAN model: \(error)")
+            return nil
+        }
+    }()
+
+    /// CIImage를 CVPixelBuffer로 변환 (GPU 가속)
     private static func createPixelBuffer(from image: CIImage, size: CGSize) -> CVPixelBuffer? {
         let attributes: [String: Any] = [
             kCVPixelBufferCGImageCompatibilityKey as String: true,
             kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
             kCVPixelBufferWidthKey as String: Int(size.width),
             kCVPixelBufferHeightKey as String: Int(size.height),
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferMetalCompatibilityKey as String: true  // Metal 호환성
         ]
 
         var pixelBuffer: CVPixelBuffer?
@@ -273,8 +310,8 @@ struct VideoFilterManager {
             return nil
         }
 
-        let context = CIContext()
-        context.render(image, to: buffer)
+        // GPU 가속 컨텍스트 사용
+        gpuContext.render(image, to: buffer)
 
         return buffer
     }
