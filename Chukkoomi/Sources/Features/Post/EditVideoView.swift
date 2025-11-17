@@ -51,43 +51,43 @@ struct EditVideoView: View {
                     .frame(width: 32, height: 32)
                     .padding(.leading, AppPadding.large)
 
-                    // 시간 눈금자 + 가로 스크롤 가능한 타임라인 편집 영역
-                    VideoTimelineEditor(
-                        videoAsset: viewStore.videoAsset,
-                        duration: viewStore.duration,
-                        currentTime: viewStore.currentTime,
-                        seekTarget: viewStore.seekTarget,
-                        trimStartTime: viewStore.editState.trimStartTime,
-                        trimEndTime: viewStore.editState.trimEndTime,
-                        onTrimStartChanged: { time in
-                            viewStore.send(.updateTrimStartTime(time))
-                        },
-                        onTrimEndChanged: { time in
-                            viewStore.send(.updateTrimEndTime(time))
-                        },
-                        onSeek: { time in
-                            viewStore.send(.seekToTime(time))
-                        }
-                    )
-                    .frame(height: 120)
-                    .offset(y: 6)
+                    VStack(spacing: AppPadding.large) {
+                        // 시간 눈금자 + 가로 스크롤 가능한 타임라인 편집 영역
+                        VideoTimelineEditor(
+                            videoAsset: viewStore.videoAsset,
+                            duration: viewStore.duration,
+                            currentTime: viewStore.currentTime,
+                            seekTarget: viewStore.seekTarget,
+                            trimStartTime: viewStore.editState.trimStartTime,
+                            trimEndTime: viewStore.editState.trimEndTime,
+                            onTrimStartChanged: { time in
+                                viewStore.send(.updateTrimStartTime(time))
+                            },
+                            onTrimEndChanged: { time in
+                                viewStore.send(.updateTrimEndTime(time))
+                            },
+                            onSeek: { time in
+                                viewStore.send(.seekToTime(time))
+                            }
+                        )
+                        .frame(height: 120)
+                        .offset(y: 6)
+                        
+                        // 필터 선택
+                        FilterSelectionView(
+                            selectedFilter: viewStore.editState.selectedFilter,
+                            onFilterSelected: { filter in
+                                viewStore.send(.filterSelected(filter))
+                            }
+                        )
+                        .padding(.top, AppPadding.medium)
+                        .padding(.horizontal, AppPadding.large)
+                    }
                 }
                 .padding(.top, AppPadding.large)
 
                 Spacer()
-                
 
-                // 필터 선택
-                FilterSelectionView(
-                    selectedFilter: viewStore.editState.selectedFilter,
-                    onFilterSelected: { filter in
-                        viewStore.send(.filterSelected(filter))
-                    }
-                )
-                .padding(.top, AppPadding.medium)
-                .padding(.horizontal, AppPadding.large)
-
-                Spacer()
             }
             .navigationTitle("영상 편집")
             .navigationBarTitleDisplayMode(.inline)
@@ -532,8 +532,10 @@ private class TimeRulerView: UIView {
             // 시간 텍스트 그리기
             let timeText = "\(second)s"
             let textSize = (timeText as NSString).size(withAttributes: attributes)
+            // x 좌표가 음수가 되지 않도록 max(0, ...) 사용
+            let textX = max(0, xPosition - textSize.width / 2)
             let textRect = CGRect(
-                x: xPosition - textSize.width / 2,
+                x: textX,
                 y: 2,
                 width: textSize.width,
                 height: textSize.height
@@ -650,7 +652,7 @@ private struct FilterButton: View {
                 // 필터 미리보기 (TODO: 나중에 실제 필터 적용된 썸네일로 변경)
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.gray.opacity(0.3))
-                    .frame(width: 60, height: 60)
+                    .frame(width: 80, height: 80)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
