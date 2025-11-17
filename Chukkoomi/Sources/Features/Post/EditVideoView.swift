@@ -26,6 +26,7 @@ struct EditVideoView: View {
                             preProcessedVideoURL: viewStore.preProcessedVideoURL,
                             isPlaying: viewStore.isPlaying,
                             seekTrigger: viewStore.seekTrigger,
+                            seekTarget: viewStore.seekTarget,
                             selectedFilter: viewStore.editState.selectedFilter,
                             onTimeUpdate: { time in viewStore.send(.updateCurrentTime(time)) },
                             onDurationUpdate: { duration in viewStore.send(.updateDuration(duration)) },
@@ -55,6 +56,7 @@ struct EditVideoView: View {
                         videoAsset: viewStore.videoAsset,
                         duration: viewStore.duration,
                         currentTime: viewStore.currentTime,
+                        seekTarget: viewStore.seekTarget,
                         trimStartTime: viewStore.editState.trimStartTime,
                         trimEndTime: viewStore.editState.trimEndTime,
                         onTrimStartChanged: { time in
@@ -62,6 +64,9 @@ struct EditVideoView: View {
                         },
                         onTrimEndChanged: { time in
                             viewStore.send(.updateTrimEndTime(time))
+                        },
+                        onSeek: { time in
+                            viewStore.send(.seekToTime(time))
                         }
                     )
                     .frame(height: 120)
@@ -187,10 +192,12 @@ private struct VideoTimelineEditor: UIViewRepresentable {
     let videoAsset: PHAsset
     let duration: Double
     let currentTime: Double
+    let seekTarget: Double?
     let trimStartTime: Double
     let trimEndTime: Double
     let onTrimStartChanged: (Double) -> Void
     let onTrimEndChanged: (Double) -> Void
+    let onSeek: (Double) -> Void
 
     // 1초당 픽셀 수
     private let pixelsPerSecond: CGFloat = 50
@@ -261,12 +268,14 @@ private struct VideoTimelineEditor: UIViewRepresentable {
                 rulerView.duration = safeDuration
                 rulerView.pixelsPerSecond = pixelsPerSecond
                 rulerView.backgroundColor = .clear
+                rulerView.onSeek = onSeek
                 timeContainer.addSubview(rulerView)
                 context.coordinator.rulerView = rulerView
             } else {
                 context.coordinator.rulerView?.frame = CGRect(x: 0, y: 0, width: timelineWidth, height: rulerHeight)
                 context.coordinator.rulerView?.duration = safeDuration
                 context.coordinator.rulerView?.pixelsPerSecond = pixelsPerSecond
+                context.coordinator.rulerView?.onSeek = onSeek
                 context.coordinator.rulerView?.setNeedsDisplay()
             }
         }
@@ -350,9 +359,14 @@ private struct VideoTimelineEditor: UIViewRepresentable {
             containerView.bringSubviewToFront(playheadView)
             playheadView.layer.zPosition = 1000
 
-            UIView.animate(withDuration: 0.1, delay: 0, options: [.curveLinear], animations: {
+            // seek 중이면 애니메이션 없이 바로 이동
+            if context.coordinator.isSeeking {
                 playheadView.frame.origin.x = playheadPosition - 6
-            })
+            } else {
+                UIView.animate(withDuration: 0.1, delay: 0, options: [.curveLinear], animations: {
+                    playheadView.frame.origin.x = playheadPosition - 6
+                })
+            }
         }
 
         // 현재 시간 텍스트 라벨 업데이트 (시간 표시 컨테이너에 추가)
@@ -381,9 +395,14 @@ private struct VideoTimelineEditor: UIViewRepresentable {
 
                 timeContainer.bringSubviewToFront(timeLabel)
 
-                UIView.animate(withDuration: 0.1, delay: 0, options: [.curveLinear], animations: {
+                // seek 중이면 애니메이션 없이 바로 이동
+                if context.coordinator.isSeeking {
                     timeLabel.center = CGPoint(x: playheadPosition, y: 10)
-                })
+                } else {
+                    UIView.animate(withDuration: 0.1, delay: 0, options: [.curveLinear], animations: {
+                        timeLabel.center = CGPoint(x: playheadPosition, y: 10)
+                    })
+                }
             }
         }
 
@@ -393,9 +412,24 @@ private struct VideoTimelineEditor: UIViewRepresentable {
             let maxOffsetX = max(0, timelineWidth - screenWidth)
             let clampedOffsetX = max(0, min(targetOffsetX, maxOffsetX))
 
-            UIView.animate(withDuration: 0.1, delay: 0, options: [.curveLinear], animations: {
+            // seek 중이면 애니메이션 없이 바로 이동
+            if context.coordinator.isSeeking {
                 scrollView.contentOffset.x = clampedOffsetX
-            })
+            } else {
+                UIView.animate(withDuration: 0.1, delay: 0, options: [.curveLinear], animations: {
+                    scrollView.contentOffset.x = clampedOffsetX
+                })
+            }
+        }
+
+        // seekTarget 플래그 설정/해제
+        if seekTarget != nil && !context.coordinator.isSeeking {
+            context.coordinator.isSeeking = true
+        } else if seekTarget == nil && context.coordinator.isSeeking {
+            // 약간의 딜레이 후 플래그 해제 (UI 업데이트가 완료될 때까지)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                context.coordinator.isSeeking = false
+            }
         }
     }
 
@@ -418,6 +452,7 @@ private struct VideoTimelineEditor: UIViewRepresentable {
         var rulerView: TimeRulerView?
         var timeLabel: UILabel?
         var isUserScrolling = false
+        var isSeeking = false  // seek 중인지 추적
 
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
             isUserScrolling = true
@@ -439,7 +474,31 @@ private struct VideoTimelineEditor: UIViewRepresentable {
 private class TimeRulerView: UIView {
     var duration: Double = 0
     var pixelsPerSecond: CGFloat = 50
+    var onSeek: ((Double) -> Void)?
     private let timeFont = UIFont.systemFont(ofSize: 14, weight: .regular)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupTapGesture()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupTapGesture()
+    }
+
+    private func setupTapGesture() {
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        addGestureRecognizer(tapGesture)
+        isUserInteractionEnabled = true
+    }
+
+    @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+        let location = gesture.location(in: self)
+        let tappedTime = Double(location.x) / Double(pixelsPerSecond)
+        let clampedTime = min(max(tappedTime, 0), duration)
+        onSeek?(clampedTime)
+    }
 
     override func draw(_ rect: CGRect) {
         guard UIGraphicsGetCurrentContext() != nil else { return }
@@ -612,6 +671,7 @@ struct CustomVideoPlayerView: UIViewRepresentable {
     let preProcessedVideoURL: URL?  // AnimeGAN 등 전처리된 비디오
     let isPlaying: Bool
     let seekTrigger: EditVideoFeature.SeekDirection?
+    let seekTarget: Double?
     let selectedFilter: VideoFilter?
     let onTimeUpdate: (Double) -> Void
     let onDurationUpdate: (Double) -> Void
@@ -657,6 +717,13 @@ struct CustomVideoPlayerView: UIViewRepresentable {
             context.coordinator.pause()
         }
 
+        // Seek to time 처리
+        if let seekTarget = seekTarget {
+            context.coordinator.seekToTime(seekTarget)
+            DispatchQueue.main.async {
+                onSeekCompleted()
+            }
+        }
 
         // 전처리된 비디오를 사용하는 경우 필터는 이미 적용되어 있으므로 스킵
         if preProcessedVideoURL == nil {
@@ -807,6 +874,19 @@ struct CustomVideoPlayerView: UIViewRepresentable {
             player?.pause()
         }
 
+        func seekToTime(_ time: Double) {
+            guard let player = player else { return }
+            let targetTime = CMTime(seconds: time, preferredTimescale: 600)
+            // 즉시 이동하도록 completion handler 사용
+            player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] completed in
+                if completed {
+                    // seek가 완료되면 즉시 시간 업데이트
+                    DispatchQueue.main.async {
+                        self?.onTimeUpdate(time)
+                    }
+                }
+            }
+        }
 
         func updateFilter(_ filterType: VideoFilter?, onComplete: @escaping () -> Void) {
             // AnimeGAN 필터는 실시간 적용하지 않음 (전처리 방식 사용)

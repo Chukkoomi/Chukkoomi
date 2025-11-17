@@ -21,6 +21,7 @@ struct EditVideoFeature {
         var currentTime: Double = 0.0
         var duration: Double = 0.0
         var seekTrigger: SeekDirection? = nil
+        var seekTarget: Double? = nil
 
         // 편집 데이터
         var editState: EditState = EditState()
@@ -61,6 +62,7 @@ struct EditVideoFeature {
         case playPauseButtonTapped
         case seekBackward
         case seekForward
+        case seekToTime(Double)
         case seekCompleted
         case updateCurrentTime(Double)
         case updateDuration(Double)
@@ -93,8 +95,13 @@ struct EditVideoFeature {
                 state.seekTrigger = .forward
                 return .none
 
+            case .seekToTime(let time):
+                state.seekTarget = time
+                return .none
+
             case .seekCompleted:
                 state.seekTrigger = nil
+                state.seekTarget = nil
                 return .none
 
             case .updateCurrentTime(let time):
