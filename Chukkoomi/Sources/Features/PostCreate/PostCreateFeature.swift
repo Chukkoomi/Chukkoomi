@@ -15,8 +15,6 @@ struct PostCreateFeature {
     @ObservableState
     struct State: Equatable {
         var selectedCategory: FootballTeams = .all
-        var hashtagInput: String = ""
-        var hashtags: [String] = []
         var content: String = ""
         var selectedImageData: Data?
         var isUploading: Bool = false
@@ -83,22 +81,14 @@ struct PostCreateFeature {
             self.selectedCategory = post.teams
             self.originalCategory = post.teams
 
-            // content에서 해시태그 제외한 본문만 추출
-            let words = post.content.split(separator: " ")
-            let contentWords = words.filter { !$0.hasPrefix("#") }
-            let contentWithoutHashtags = contentWords.joined(separator: " ")
-
-            self.content = contentWithoutHashtags
-            self.originalContent = contentWithoutHashtags
-
-            // 해시태그 추출
-            self.hashtags = post.hashTags
+            // content를 그대로 사용 (해시태그 포함)
+            self.content = post.content
+            self.originalContent = post.content
 
             // 원본 이미지 URL 저장
             self.originalImageUrl = post.files.first
 
             // 나머지는 기본값
-            self.hashtagInput = ""
             self.selectedImageData = nil
             self.isUploading = false
             self.errorMessage = nil
@@ -109,8 +99,6 @@ struct PostCreateFeature {
         // 기본 생성자 (작성 모드)
         init() {
             self.selectedCategory = .all
-            self.hashtagInput = ""
-            self.hashtags = []
             self.content = ""
             self.selectedImageData = nil
             self.isUploading = false
@@ -128,9 +116,6 @@ struct PostCreateFeature {
     // MARK: - Action
     enum Action: Equatable {
         case categorySelected(FootballTeams)
-        case hashtagInputChanged(String)
-        case addHashtag
-        case removeHashtag(String)
         case contentChanged(String)
         case selectImageTapped
         case removeImage
@@ -153,12 +138,6 @@ struct PostCreateFeature {
             switch (lhs, rhs) {
             case let (.categorySelected(lhsCategory), .categorySelected(rhsCategory)):
                 return lhsCategory == rhsCategory
-            case let (.hashtagInputChanged(lhsText), .hashtagInputChanged(rhsText)):
-                return lhsText == rhsText
-            case (.addHashtag, .addHashtag):
-                return true
-            case let (.removeHashtag(lhsTag), .removeHashtag(rhsTag)):
-                return lhsTag == rhsTag
             case let (.contentChanged(lhsContent), .contentChanged(rhsContent)):
                 return lhsContent == rhsContent
             case (.selectImageTapped, .selectImageTapped):
@@ -187,36 +166,6 @@ struct PostCreateFeature {
             switch action {
             case let .categorySelected(category):
                 state.selectedCategory = category
-                return .none
-
-            case let .hashtagInputChanged(text):
-                // 띄어쓰기 제거
-                state.hashtagInput = text.replacingOccurrences(of: " ", with: "")
-                return .none
-
-            case .addHashtag:
-                let trimmed = state.hashtagInput.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                guard !trimmed.isEmpty else {
-                    return .none
-                }
-
-                // # 제거 (사용자가 입력했을 수도 있으므로)
-                let tag = trimmed.replacingOccurrences(of: "#", with: "")
-
-                // 중복 체크
-                guard !state.hashtags.contains(tag) else {
-                    state.hashtagInput = ""
-                    return .none
-                }
-
-                // 해시태그 추가
-                state.hashtags.append(tag)
-                state.hashtagInput = ""
-                return .none
-
-            case let .removeHashtag(tag):
-                state.hashtags.removeAll { $0 == tag }
                 return .none
 
             case let .contentChanged(content):
@@ -258,7 +207,6 @@ struct PostCreateFeature {
                 let logPrefix = state.isEditMode ? "게시글 수정 시작" : "게시글 업로드 시작"
                 print(logPrefix)
                 print("   카테고리: \(state.selectedCategory.rawValue)")
-                print("   해시태그: \(state.hashtags)")
                 print("   내용: \(state.content)")
 
                 // 수정 모드인지 작성 모드인지에 따라 분기
@@ -268,20 +216,15 @@ struct PostCreateFeature {
                         postId = state.editingPostId!,
                         imageData = state.selectedImageData,
                         category = state.selectedCategory,
-                        hashtags = state.hashtags,
                         content = state.content
                     ] send in
                         do {
-                            // content에 본문과 해시태그를 함께 포함
-                            let hashtagString = hashtags.isEmpty ? "" : " " + hashtags.map { "#\($0)" }.joined(separator: " ")
-                            let fullContent = content + hashtagString
-
                             // PostRequestDTO 생성
                             let postRequest = PostRequestDTO(
                                 category: category.rawValue,
                                 title: "게시글",
                                 price: 0,
-                                content: fullContent,
+                                content: content,
                                 value1: "",
                                 value2: "",
                                 value3: "",
@@ -317,20 +260,15 @@ struct PostCreateFeature {
                     return .run { [
                         imageData = state.selectedImageData!,
                         category = state.selectedCategory,
-                        hashtags = state.hashtags,
                         content = state.content
                     ] send in
                         do {
-                            // content에 본문과 해시태그를 함께 포함
-                            let hashtagString = hashtags.isEmpty ? "" : " " + hashtags.map { "#\($0)" }.joined(separator: " ")
-                            let fullContent = content + hashtagString
-
                             // PostRequestDTO 생성
                             let postRequest = PostRequestDTO(
                                 category: category.rawValue,
                                 title: "게시글",
                                 price: 0,
-                                content: fullContent,
+                                content: content,
                                 value1: "",
                                 value2: "",
                                 value3: "",
@@ -370,9 +308,7 @@ struct PostCreateFeature {
                 if !state.isEditMode {
                     state.selectedImageData = nil
                     state.selectedCategory = .all
-                    state.hashtags = []
                     state.content = ""
-                    state.hashtagInput = ""
                 }
 
                 // 성공 알림 표시

@@ -17,8 +17,6 @@ struct PostCreateView: View {
 
             categorySection
 
-            hashtagSection
-
             contentSection
 
             Spacer()
@@ -191,79 +189,123 @@ struct PostCreateView: View {
         }
     }
 
-    // MARK: - Hashtag Section
-    private var hashtagSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("해시태그")
-                .font(.headline)
-
-            // 해시태그 입력 필드
-            TextField("해시태그를 입력해주세요(ex. 손흥민)", text: Binding(
-                get: { store.hashtagInput },
-                set: { store.send(.hashtagInputChanged($0)) }
-            ))
-            .textFieldStyle(.roundedBorder)
-            .onSubmit {
-                store.send(.addHashtag)
-            }
-
-            // 추가된 해시태그 표시
-            if !store.hashtags.isEmpty {
-                FlowLayout(spacing: 8) {
-                    ForEach(store.hashtags, id: \.self) { tag in
-                        hashtagChip(tag: tag)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-    }
-
-    // MARK: - Hashtag Chip
-    private func hashtagChip(tag: String) -> some View {
-        HStack(spacing: 4) {
-            Text("#\(tag)")
-                .font(.subheadline)
-                .foregroundColor(.blue)
-
-            Button {
-                store.send(.removeHashtag(tag))
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.caption)
-                    .foregroundColor(.gray)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(Color.blue.opacity(0.1))
-        .cornerRadius(16)
-    }
-
     // MARK: - Content Section
     private var contentSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ZStack(alignment: .topLeading) {
-                // Placeholder
-                if store.content.isEmpty {
-                    Text("글쓰기..")
-                        .foregroundColor(.gray.opacity(0.5))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 8)
-                }
+            Text("글쓰기")
+                .font(.headline)
 
-                // TextEditor
-                TextEditor(text: Binding(
+            HashtagTextView(
+                text: Binding(
                     get: { store.content },
                     set: { store.send(.contentChanged($0)) }
-                ))
-                .frame(height: 200)
-                .scrollContentBackground(.hidden)
-            }
+                ),
+                placeholder: "내용을 입력하세요. 해시태그는 #을 붙여주세요 (ex. #손흥민)"
+            )
+            .frame(height: 200)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color.gray.opacity(0.3), lineWidth: 1)
             )
+        }
+    }
+}
+
+// MARK: - HashtagTextView
+struct HashtagTextView: UIViewRepresentable {
+    @Binding var text: String
+    var placeholder: String
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.delegate = context.coordinator
+        textView.font = UIFont.systemFont(ofSize: 16)
+        textView.backgroundColor = .clear
+        textView.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
+
+        // Placeholder 설정
+        if text.isEmpty {
+            textView.text = placeholder
+            textView.textColor = UIColor.gray.withAlphaComponent(0.5)
+        } else {
+            textView.text = text
+            textView.textColor = UIColor.label
+            applyHashtagFormatting(to: textView)
+        }
+
+        return textView
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        // Binding 값이 변경되었을 때만 업데이트
+        if uiView.text != text {
+            if text.isEmpty {
+                uiView.text = placeholder
+                uiView.textColor = UIColor.gray.withAlphaComponent(0.5)
+            } else {
+                uiView.text = text
+                uiView.textColor = UIColor.label
+                applyHashtagFormatting(to: uiView)
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    private func applyHashtagFormatting(to textView: UITextView) {
+        let attributedString = NSMutableAttributedString(string: textView.text)
+        let fullRange = NSRange(location: 0, length: attributedString.length)
+
+        // 기본 스타일 설정
+        attributedString.addAttribute(.font, value: UIFont.systemFont(ofSize: 16), range: fullRange)
+        attributedString.addAttribute(.foregroundColor, value: UIColor.label, range: fullRange)
+
+        // 해시태그 패턴: #으로 시작하고 공백이나 줄바꿈 전까지
+        let pattern = "#[^\\s#]+"
+        if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+            let matches = regex.matches(in: textView.text, options: [], range: fullRange)
+
+            for match in matches {
+                // 해시태그에 파란색 + 밑줄 적용
+                attributedString.addAttribute(.foregroundColor, value: UIColor.systemBlue, range: match.range)
+                attributedString.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: match.range)
+            }
+        }
+
+        textView.attributedText = attributedString
+    }
+
+    class Coordinator: NSObject, UITextViewDelegate {
+        var parent: HashtagTextView
+
+        init(_ parent: HashtagTextView) {
+            self.parent = parent
+        }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            // Placeholder 제거
+            if textView.text == parent.placeholder {
+                textView.text = ""
+                textView.textColor = UIColor.label
+            }
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            // 텍스트가 비어있으면 Placeholder 표시
+            if textView.text.isEmpty {
+                textView.text = parent.placeholder
+                textView.textColor = UIColor.gray.withAlphaComponent(0.5)
+            }
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            // Placeholder가 아닐 때만 업데이트
+            if textView.text != parent.placeholder {
+                parent.text = textView.text
+                parent.applyHashtagFormatting(to: textView)
+            }
         }
     }
 }
