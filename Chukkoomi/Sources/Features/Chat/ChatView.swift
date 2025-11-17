@@ -45,10 +45,13 @@ struct ChatView: View {
 
                             // 메시지 목록
                             ForEach(Array(viewStore.messages.enumerated()), id: \.element.chatId) { index, message in
+                                let isAfterDateSeparator = index == 0 || shouldShowDateSeparator(currentMessage: message, previousMessage: viewStore.messages[index - 1])
+
                                 // 날짜 구분선 표시 (첫 메시지이거나 이전 메시지와 날짜가 다를 때)
-                                if index == 0 || shouldShowDateSeparator(currentMessage: message, previousMessage: viewStore.messages[index - 1]) {
+                                if isAfterDateSeparator {
                                     DateSeparatorView(dateString: message.createdAt)
-                                        .padding(.vertical, 12)
+                                        .padding(.top, 16)
+                                        .padding(.bottom, 16)
                                 }
 
                                 let previousMessage = index > 0 ? viewStore.messages[index - 1] : nil
@@ -62,7 +65,8 @@ struct ChatView: View {
                                     showTime: shouldShowTime(currentMessage: message, nextMessage: nextMessage, myUserId: viewStore.myUserId)
                                 )
                                 .id(message.chatId)
-                                .padding(.top, isNewMessageGroup(currentMessage: message, previousMessage: previousMessage) ? 8 : 2)
+                                .padding(.top, isAfterDateSeparator ? 0 : (isNewMessageGroup(currentMessage: message, previousMessage: previousMessage) ? 8 : 2))
+                                .padding(.bottom, index == viewStore.messages.count - 1 ? 8 : 0)
                             }
                         }
                         .padding(.horizontal, 16)
@@ -472,7 +476,7 @@ struct MessageRow: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(isMyMessage ? AppColor.disabled : Color.gray.opacity(0.2))
-                    .cornerRadius(16)
+                    .cornerRadius(12)
             }
 
             // 이미지 파일
