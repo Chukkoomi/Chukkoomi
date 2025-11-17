@@ -36,7 +36,7 @@ struct ChatView: View {
                 // 메시지 리스트
                 ScrollViewReader { scrollProxy in
                     ScrollView {
-                        LazyVStack(spacing: 8) {
+                        LazyVStack(spacing: 0) {
                             // 페이지네이션 로딩 인디케이터
                             if viewStore.isLoading && viewStore.cursorDate != nil {
                                 ProgressView()
@@ -51,12 +51,18 @@ struct ChatView: View {
                                         .padding(.vertical, 12)
                                 }
 
+                                let previousMessage = index > 0 ? viewStore.messages[index - 1] : nil
+                                let nextMessage = index < viewStore.messages.count - 1 ? viewStore.messages[index + 1] : nil
+
                                 MessageRow(
                                     message: message,
                                     isMyMessage: isMyMessage(message, myUserId: viewStore.myUserId),
-                                    opponentProfileImage: opponentProfileImage
+                                    opponentProfileImage: opponentProfileImage,
+                                    showProfile: shouldShowProfile(currentMessage: message, previousMessage: previousMessage, myUserId: viewStore.myUserId),
+                                    showTime: shouldShowTime(currentMessage: message, nextMessage: nextMessage, myUserId: viewStore.myUserId)
                                 )
                                 .id(message.chatId)
+                                .padding(.top, isNewMessageGroup(currentMessage: message, previousMessage: previousMessage) ? 8 : 2)
                             }
                         }
                         .padding(.horizontal, 16)
@@ -161,6 +167,117 @@ struct ChatView: View {
     // 날짜 구분선을 표시할지 확인
     private func shouldShowDateSeparator(currentMessage: ChatMessage, previousMessage: ChatMessage) -> Bool {
         return DateFormatters.isDifferentDay(previousMessage.createdAt, currentMessage.createdAt)
+    }
+
+    // 두 메시지가 같은 분에 보낸 메시지인지 확인
+    private func isSameMinute(_ message1: ChatMessage, _ message2: ChatMessage) -> Bool {
+        guard let date1 = DateFormatters.parseDate(message1.createdAt),
+              let date2 = DateFormatters.parseDate(message2.createdAt) else {
+            return false
+        }
+
+        let calendar = Calendar.current
+        let components1 = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date1)
+        let components2 = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: date2)
+
+        return components1.year == components2.year &&
+               components1.month == components2.month &&
+               components1.day == components2.day &&
+               components1.hour == components2.hour &&
+               components1.minute == components2.minute
+    }
+
+    // 프로필 이미지와 닉네임을 표시할지 확인
+    private func shouldShowProfile(currentMessage: ChatMessage, previousMessage: ChatMessage?, myUserId: String?) -> Bool {
+        // 첫 메시지거나 이전 메시지가 없으면 표시
+        guard let previousMessage = previousMessage else {
+            return true
+        }
+
+        // 내 메시지면 항상 프로필 숨김
+        if isMyMessage(currentMessage, myUserId: myUserId) {
+            return false
+        }
+
+        // 파일이 있으면 항상 표시
+        if !currentMessage.files.isEmpty {
+            return true
+        }
+
+        // 이전 메시지가 파일이었으면 표시
+        if !previousMessage.files.isEmpty {
+            return true
+        }
+
+        // 발신자가 다르면 표시
+        if currentMessage.sender.userId != previousMessage.sender.userId {
+            return true
+        }
+
+        // 같은 발신자이지만 시간이 다르면 표시
+        if !isSameMinute(currentMessage, previousMessage) {
+            return true
+        }
+
+        // 같은 발신자, 같은 시간이면 숨김
+        return false
+    }
+
+    // 시간을 표시할지 확인
+    private func shouldShowTime(currentMessage: ChatMessage, nextMessage: ChatMessage?, myUserId: String?) -> Bool {
+        // 다음 메시지가 없으면 표시
+        guard let nextMessage = nextMessage else {
+            return true
+        }
+
+        // 파일이 있으면 항상 표시
+        if !currentMessage.files.isEmpty {
+            return true
+        }
+
+        // 다음 메시지가 파일이면 표시
+        if !nextMessage.files.isEmpty {
+            return true
+        }
+
+        // 발신자가 다르면 표시
+        if currentMessage.sender.userId != nextMessage.sender.userId {
+            return true
+        }
+
+        // 같은 발신자이지만 시간이 다르면 표시
+        if !isSameMinute(currentMessage, nextMessage) {
+            return true
+        }
+
+        // 같은 발신자, 같은 시간이면 숨김
+        return false
+    }
+
+    // 새로운 메시지 그룹인지 확인 (간격 조절용)
+    private func isNewMessageGroup(currentMessage: ChatMessage, previousMessage: ChatMessage?) -> Bool {
+        // 첫 메시지면 새 그룹
+        guard let previousMessage = previousMessage else {
+            return true
+        }
+
+        // 현재 또는 이전 메시지가 파일이 있으면 새 그룹
+        if !currentMessage.files.isEmpty || !previousMessage.files.isEmpty {
+            return true
+        }
+
+        // 발신자가 다르면 새 그룹
+        if currentMessage.sender.userId != previousMessage.sender.userId {
+            return true
+        }
+
+        // 같은 발신자이지만 시간이 다르면 새 그룹
+        if !isSameMinute(currentMessage, previousMessage) {
+            return true
+        }
+
+        // 같은 발신자, 같은 시간이면 같은 그룹
+        return false
     }
 
     // 상대방 프로필 이미지를 한 번만 로드
@@ -274,6 +391,8 @@ struct MessageRow: View {
     let message: ChatMessage
     let isMyMessage: Bool
     let opponentProfileImage: UIImage?
+    let showProfile: Bool
+    let showTime: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -282,46 +401,58 @@ struct MessageRow: View {
 
                 HStack(alignment: .bottom, spacing: 8) {
                     // 내 메시지: 시간이 왼쪽
-                    Text(DateFormatters.formatChatMessageTime(message.createdAt))
-                        .font(.system(size: 11))
-                        .foregroundColor(.gray)
-                        .fixedSize()
-
-                    messageContent
-                }
-            } else {
-                // 상대방 프로필 이미지
-                if let profileImage = opponentProfileImage {
-                    Image(uiImage: profileImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 36, height: 36)
-                        .clipShape(Circle())
-                } else {
-                    Circle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 36, height: 36)
-                        .overlay(
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 16))
-                                .foregroundColor(.gray)
-                        )
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    // 닉네임
-                    Text(message.sender.nick)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.primary)
-
-                    HStack(alignment: .bottom, spacing: 8) {
-                        messageContent
-
-                        // 받은 메시지: 시간이 오른쪽
+                    if showTime {
                         Text(DateFormatters.formatChatMessageTime(message.createdAt))
                             .font(.system(size: 11))
                             .foregroundColor(.gray)
                             .fixedSize()
+                    }
+
+                    messageContent
+                }
+            } else {
+                // 상대방 프로필 이미지 (showProfile이 true일 때만 표시, false면 빈 공간)
+                if showProfile {
+                    if let profileImage = opponentProfileImage {
+                        Image(uiImage: profileImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 36, height: 36)
+                            .clipShape(Circle())
+                    } else {
+                        Circle()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(width: 36, height: 36)
+                            .overlay(
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.gray)
+                            )
+                    }
+                } else {
+                    // 프로필 이미지 자리 확보 (투명 공간)
+                    Color.clear
+                        .frame(width: 36, height: 36)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    // 닉네임 (showProfile이 true일 때만 표시)
+                    if showProfile {
+                        Text(message.sender.nick)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.primary)
+                    }
+
+                    HStack(alignment: .bottom, spacing: 8) {
+                        messageContent
+
+                        // 받은 메시지: 시간 (showTime이 true일 때만 표시)
+                        if showTime {
+                            Text(DateFormatters.formatChatMessageTime(message.createdAt))
+                                .font(.system(size: 11))
+                                .foregroundColor(.gray)
+                                .fixedSize()
+                        }
                     }
                 }
 
