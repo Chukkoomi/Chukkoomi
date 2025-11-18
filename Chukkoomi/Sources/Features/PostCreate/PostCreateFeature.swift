@@ -234,11 +234,9 @@ struct PostCreateFeature {
                             if let videoURL = videoURL {
                                 // 영상이 있으면 영상 데이터 읽기
                                 mediaData = try Data(contentsOf: videoURL)
-                                print("📹 영상 업로드: \(mediaData!.count) bytes")
                             } else if let imageData = imageData {
                                 // 이미지가 있으면 이미지 데이터 사용
                                 mediaData = imageData
-                                print("📷 새 이미지로 교체: \(mediaData!.count) bytes")
                             }
 
                             // 기존 파일 URL 처리:
@@ -247,7 +245,6 @@ struct PostCreateFeature {
                             let files: [String]
                             if mediaData == nil, let originalUrl = originalImageUrl {
                                 files = [originalUrl]
-                                print("📷 기존 파일 유지: \(originalUrl)")
                             } else {
                                 files = []
                             }
@@ -302,11 +299,9 @@ struct PostCreateFeature {
                             if let videoURL = videoURL {
                                 // 영상이 있으면 영상 데이터 읽기
                                 mediaData = try Data(contentsOf: videoURL)
-                                print("📹 영상 업로드: \(mediaData.count) bytes")
                             } else if let imageData = imageData {
                                 // 이미지가 있으면 이미지 데이터 사용
                                 mediaData = imageData
-                                print("📷 이미지 업로드: \(mediaData.count) bytes")
                             } else {
                                 throw NSError(domain: "PostCreate", code: -1, userInfo: [NSLocalizedDescriptionKey: "미디어가 없습니다"])
                             }
@@ -392,7 +387,6 @@ struct PostCreateFeature {
             case let .galleryPicker(.presented(.delegate(.didExportVideo(url)))):
                 // 갤러리에서 영상 편집 완료
                 state.selectedVideoURL = url
-                print("✅ 편집된 영상 수신: \(url)")
 
                 // 영상 썸네일 생성
                 return .run { send in
@@ -404,7 +398,6 @@ struct PostCreateFeature {
             case let .videoThumbnailGenerated(thumbnailData):
                 // 썸네일을 UI 표시용으로 저장 (업로드 시에는 실제 영상 사용)
                 state.videoThumbnailData = thumbnailData
-                print("📸 영상 썸네일 생성 완료: \(thumbnailData.count) bytes")
                 return .none
 
             case .galleryPicker:
