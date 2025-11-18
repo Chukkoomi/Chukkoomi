@@ -90,6 +90,9 @@ struct PostCellFeature {
         // Comment Count Update
         case updateCommentCount(Int) // delta: +1 or -1
 
+        // Follow Status Update
+        case updateFollowStatus(Bool) // 팔로우 상태 업데이트
+
         // Menu Actions
         case menu(PresentationAction<Menu>)
 
@@ -122,6 +125,7 @@ struct PostCellFeature {
             case hashtagTapped(String)
             case myProfileTapped
             case otherProfileTapped(String) // userId
+            case followStatusChanged(userId: String, isFollowing: Bool)
         }
 
         static func == (lhs: Action, rhs: Action) -> Bool {
@@ -138,6 +142,8 @@ struct PostCellFeature {
             case let (.hashtagTapped(lhs), .hashtagTapped(rhs)):
                 return lhs == rhs
             case let (.updateCommentCount(lhs), .updateCommentCount(rhs)):
+                return lhs == rhs
+            case let (.updateFollowStatus(lhs), .updateFollowStatus(rhs)):
                 return lhs == rhs
             case let (.menu(lhs), .menu(rhs)):
                 return lhs == rhs
@@ -213,6 +219,10 @@ struct PostCellFeature {
 
             case let .updateCommentCount(delta):
                 state.commentCount += delta
+                return .none
+
+            case let .updateFollowStatus(isFollowing):
+                state.isFollowing = isFollowing
                 return .none
 
             case .shareTapped:
@@ -383,6 +393,10 @@ struct PostCellFeature {
             // 서버 응답과 현재 상태가 일치하는지 확인
             if state.isFollowing != response.likeStatus {
                 state.isFollowing = response.likeStatus
+            }
+            // 팔로우 상태 변경을 부모에게 알림
+            if let userId = state.post.creator?.userId {
+                return .send(.delegate(.followStatusChanged(userId: userId, isFollowing: response.likeStatus)))
             }
         }
         return .none

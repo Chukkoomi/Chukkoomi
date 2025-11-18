@@ -26,6 +26,7 @@ struct PostFeature {
         var nextCursor: String?
         var searchHashtag: String? // 해시태그 검색용
         var teamInfo: KLeagueTeam? // 팀 정보 (팀별 게시글 조회용)
+        var currentUserProfile: Profile? // 현재 유저의 프로필 (팔로잉 상태 확인용)
 
         @Presents var hashtagSearch: PostFeature.State? // 해시태그 검색 화면
         @Presents var postCreate: PostCreateFeature.State? // 게시글 작성/수정 화면
@@ -52,6 +53,8 @@ struct PostFeature {
     // MARK: - Action
     enum Action: Equatable {
         case onAppear
+        case loadCurrentUserProfile
+        case currentUserProfileLoaded(Result<Profile, Error>)
         case loadPosts
         case loadMorePosts
         case postsResponse(Result<PostListResponseDTO, Error>)
@@ -66,8 +69,11 @@ struct PostFeature {
         static func == (lhs: Action, rhs: Action) -> Bool {
             switch (lhs, rhs) {
             case (.onAppear, .onAppear),
+                 (.loadCurrentUserProfile, .loadCurrentUserProfile),
                  (.loadPosts, .loadPosts),
                  (.loadMorePosts, .loadMorePosts):
+                return true
+            case (.currentUserProfileLoaded, .currentUserProfileLoaded):
                 return true
             case let (.postsResponse(lhsResult), .postsResponse(rhsResult)):
                 switch (lhsResult, rhsResult) {
@@ -104,7 +110,38 @@ struct PostFeature {
             switch action {
             case .onAppear:
                 guard state.postCells.isEmpty else { return .none }
+                // 현재 유저 프로필이 없으면 먼저 로드
+                if state.currentUserProfile == nil {
+                    return .merge(
+                        .send(.loadCurrentUserProfile),
+                        .send(.loadPosts)
+                    )
+                }
                 return .send(.loadPosts)
+
+            case .loadCurrentUserProfile:
+                return .run { send in
+                    do {
+                        let response = try await NetworkManager.shared.performRequest(
+                            ProfileRouter.lookupMe,
+                            as: ProfileDTO.self
+                        )
+                        let profile = response.toDomain
+                        await send(.currentUserProfileLoaded(.success(profile)))
+                    } catch {
+                        print("❌ 현재 유저 프로필 로드 실패: \(error)")
+                        await send(.currentUserProfileLoaded(.failure(error)))
+                    }
+                }
+
+            case let .currentUserProfileLoaded(.success(profile)):
+                state.currentUserProfile = profile
+                print("✅ 현재 유저 프로필 로드 완료 (팔로잉: \(profile.following.count)명)")
+                return .none
+
+            case .currentUserProfileLoaded(.failure):
+                // 프로필 로드 실패해도 게시글은 계속 표시
+                return .none
 
             case .loadPosts:
                 state.isLoading = true
@@ -176,7 +213,21 @@ struct PostFeature {
                 state.nextCursor = response.nextCursor
 
                 let newPosts = response.data.map { $0.toDomain }
-                let newCells = newPosts.map { PostCellFeature.State(post: $0) }
+
+                // 현재 유저의 팔로잉 목록에서 userId 배열 추출
+                let followingUserIds = state.currentUserProfile?.following.map { $0.userId } ?? []
+
+                // 각 게시글의 작성자가 팔로잉 목록에 있는지 확인하여 PostCellFeature.State 생성
+                let newCells = newPosts.map { post -> PostCellFeature.State in
+                    var cellState = PostCellFeature.State(post: post)
+
+                    // 게시글 작성자가 팔로잉 목록에 있는지 확인
+                    if let creatorId = post.creator?.userId {
+                        cellState.isFollowing = followingUserIds.contains(creatorId)
+                    }
+
+                    return cellState
+                }
 
                 // 중복 제거하며 추가
                 for cell in newCells where !state.postCells.contains(where: { $0.id == cell.id }) {
@@ -333,6 +384,61 @@ struct PostFeature {
         case let .otherProfileTapped(userId):
             // 다른 유저 프로필 화면으로 이동
             state.otherProfile = OtherProfileFeature.State(userId: userId)
+            return .none
+
+        case let .followStatusChanged(userId, isFollowing):
+            // 해당 유저의 모든 게시글에 팔로우 상태 동기화
+            print("👥 팔로우 상태 변경: userId=\(userId), isFollowing=\(isFollowing)")
+
+            // 1. 현재 유저 프로필의 following 목록 업데이트
+            if let profile = state.currentUserProfile {
+                var updatedFollowing = profile.following
+
+                if isFollowing {
+                    // 팔로우: following 목록에 추가
+                    // 해당 유저 정보를 게시글에서 찾기
+                    if let userToFollow = state.postCells.first(where: { $0.post.creator?.userId == userId })?.post.creator {
+                        if !updatedFollowing.contains(where: { $0.userId == userId }) {
+                            updatedFollowing.append(userToFollow)
+                            state.currentUserProfile = Profile(
+                                userId: profile.userId,
+                                email: profile.email,
+                                nickname: profile.nickname,
+                                profileImage: profile.profileImage,
+                                introduce: profile.introduce,
+                                followers: profile.followers,
+                                following: updatedFollowing,
+                                posts: profile.posts
+                            )
+                            print("✅ Following 목록에 추가: \(userToFollow.nickname)")
+                        }
+                    }
+                } else {
+                    // 언팔로우: following 목록에서 제거
+                    updatedFollowing.removeAll { $0.userId == userId }
+                    state.currentUserProfile = Profile(
+                        userId: profile.userId,
+                        email: profile.email,
+                        nickname: profile.nickname,
+                        profileImage: profile.profileImage,
+                        introduce: profile.introduce,
+                        followers: profile.followers,
+                        following: updatedFollowing,
+                        posts: profile.posts
+                    )
+                    print("✅ Following 목록에서 제거: userId=\(userId)")
+                }
+            }
+
+            // 2. 모든 게시글을 순회하며 같은 유저의 게시글 찾아서 업데이트
+            for postCell in state.postCells {
+                if let creatorId = postCell.post.creator?.userId, creatorId == userId {
+                    // 해당 게시글의 팔로우 상태 업데이트
+                    state.postCells[id: postCell.id]?.isFollowing = isFollowing
+                    print("✅ 게시글 \(postCell.post.id)의 팔로우 상태 업데이트: \(isFollowing)")
+                }
+            }
+
             return .none
         }
     }

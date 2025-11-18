@@ -215,10 +215,25 @@ struct PostCreateFeature {
                     return .run { [
                         postId = state.editingPostId!,
                         imageData = state.selectedImageData,
+                        originalImageUrl = state.originalImageUrl,
                         category = state.selectedCategory,
                         content = state.content
                     ] send in
                         do {
+                            // 기존 이미지 URL 처리:
+                            // - 새 이미지를 선택하지 않았고, 기존 이미지가 있으면 기존 URL 유지
+                            // - 새 이미지를 선택했으면 빈 배열 (새 이미지가 업로드되어 추가됨)
+                            let files: [String]
+                            if imageData == nil, let originalUrl = originalImageUrl {
+                                files = [originalUrl]
+                                print("📷 기존 이미지 유지: \(originalUrl)")
+                            } else {
+                                files = []
+                                if imageData != nil {
+                                    print("📷 새 이미지로 교체")
+                                }
+                            }
+
                             // PostRequestDTO 생성
                             let postRequest = PostRequestDTO(
                                 category: category.rawValue,
@@ -235,7 +250,7 @@ struct PostCreateFeature {
                                 value8: "",
                                 value9: "",
                                 value10: "",
-                                files: [],
+                                files: files,
                                 longitude: GeoLocation.defaultLocation.longitude,
                                 latitude: GeoLocation.defaultLocation.latitude
                             )
