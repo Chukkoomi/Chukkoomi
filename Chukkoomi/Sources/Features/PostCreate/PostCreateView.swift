@@ -85,8 +85,39 @@ struct PostCreateView: View {
     // MARK: - Media Selection Section
     private var mediaSelectionSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let imageData = store.selectedImageData,
-               let uiImage = UIImage(data: imageData) {
+            if let thumbnailData = store.videoThumbnailData,
+               let uiImage = UIImage(data: thumbnailData) {
+                // 영상 썸네일 표시
+                ZStack(alignment: .topTrailing) {
+                    ZStack {
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 200)
+                            .background(Color.black)
+                            .cornerRadius(12)
+
+                        // 재생 아이콘 오버레이
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 50))
+                            .foregroundColor(.white)
+                            .shadow(radius: 5)
+                    }
+
+                    // 제거 버튼
+                    Button {
+                        store.send(.removeImage)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.white)
+                            .background(Circle().fill(Color.black.opacity(0.5)))
+                    }
+                    .padding(8)
+                }
+            } else if let imageData = store.selectedImageData,
+                      let uiImage = UIImage(data: imageData) {
                 // 새로 선택된 이미지 표시
                 ZStack(alignment: .topTrailing) {
                     Image(uiImage: uiImage)

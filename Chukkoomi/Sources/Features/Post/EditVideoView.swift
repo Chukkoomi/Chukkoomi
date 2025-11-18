@@ -95,9 +95,9 @@ struct EditVideoView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
-                        viewStore.send(.nextButtonTapped)
+                        viewStore.send(.completeButtonTapped)
                     } label: {
-                        Text("다음")
+                        Text("완료")
                             .foregroundStyle(.black)
                     }
                     .disabled(viewStore.isExporting)

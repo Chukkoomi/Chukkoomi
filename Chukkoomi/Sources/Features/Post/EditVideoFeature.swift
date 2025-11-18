@@ -72,11 +72,18 @@ struct EditVideoFeature {
         case filterApplied
         case preProcessCompleted(URL)
         case preProcessFailed(String)
-        case nextButtonTapped
+        case completeButtonTapped
         case exportProgressUpdated(Double)
         case exportCompleted(URL)
         case exportFailed(String)
         case playbackEnded
+
+        // Delegate
+        case delegate(Delegate)
+
+        enum Delegate: Equatable {
+            case videoExportCompleted(URL)
+        }
     }
 
     // MARK: - Body
@@ -184,7 +191,7 @@ struct EditVideoFeature {
                 print("❌ 필터 전처리 실패: \(error)")
                 return .none
 
-            case .nextButtonTapped:
+            case .completeButtonTapped:
                 state.isExporting = true
                 state.exportProgress = 0.0
 
@@ -213,9 +220,9 @@ struct EditVideoFeature {
             case .exportCompleted(let url):
                 state.isExporting = false
                 state.exportProgress = 1.0
-                // TODO: 편집된 영상을 다음 화면(게시물 작성)으로 전달
                 print("✅ 영상 내보내기 완료: \(url)")
-                return .none
+                // 편집된 영상을 PostCreateFeature로 전달
+                return .send(.delegate(.videoExportCompleted(url)))
 
             case .exportFailed(let error):
                 state.isExporting = false
@@ -227,6 +234,9 @@ struct EditVideoFeature {
                 // 재생이 종료되면 재생 상태를 끄고, 시간을 끝으로 고정
                 state.isPlaying = false
                 state.currentTime = state.duration
+                return .none
+
+            case .delegate:
                 return .none
             }
         }

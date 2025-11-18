@@ -72,6 +72,7 @@ struct GalleryPickerFeature {
         enum Delegate: Equatable {
             case didSelectImage(Data)
             case didSelectVideo(PHAsset)
+            case didExportVideo(URL)
         }
     }
 
@@ -173,6 +174,15 @@ struct GalleryPickerFeature {
 
             case .cancel:
                 return .run { _ in
+                    await self.dismiss()
+                }
+
+            case let .editVideo(.presented(.delegate(.videoExportCompleted(url)))):
+                // 편집 완료된 영상을 PostCreateFeature로 전달하고 fullscreen 닫기
+                // editVideo state를 먼저 nil로 설정
+                state.editVideo = nil
+                return .run { send in
+                    await send(.delegate(.didExportVideo(url)))
                     await self.dismiss()
                 }
 
