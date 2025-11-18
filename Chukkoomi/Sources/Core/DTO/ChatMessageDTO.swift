@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import RealmSwift
 
 // MARK: - 메시지 보내기 Request
 struct SendMessageRequestDTO: Encodable {
@@ -84,5 +85,123 @@ extension ChatMessageResponseDTO.Sender {
 extension UploadFileResponseDTO {
     var toDomain: [String] {
         return files
+    }
+}
+
+// MARK: - Realm Objects
+
+/// Realm Object for ChatUser (Embedded)
+final class ChatUserRealmDTO: EmbeddedObject {
+    @Persisted var userId: String
+    @Persisted var nick: String
+    @Persisted var profileImage: String?
+
+    convenience init(userId: String, nick: String, profileImage: String?) {
+        self.init()
+        self.userId = userId
+        self.nick = nick
+        self.profileImage = profileImage
+    }
+}
+
+/// Realm Object for ChatMessage
+final class ChatMessageRealmDTO: Object {
+    @Persisted(primaryKey: true) var chatId: String
+    @Persisted var roomId: String
+    @Persisted var content: String?
+    @Persisted var createdAt: String
+    @Persisted var sender: ChatUserRealmDTO?
+    @Persisted var files: List<String>
+    @Persisted var sendStatus: String  // "sending", "sent", "failed"
+
+    convenience init(
+        chatId: String,
+        roomId: String,
+        content: String?,
+        createdAt: String,
+        sender: ChatUserRealmDTO?,
+        files: [String],
+        sendStatus: String
+    ) {
+        self.init()
+        self.chatId = chatId
+        self.roomId = roomId
+        self.content = content
+        self.createdAt = createdAt
+        self.sender = sender
+        self.files.append(objectsIn: files)
+        self.sendStatus = sendStatus
+    }
+}
+
+// MARK: - Realm DTO -> Domain
+extension ChatUserRealmDTO {
+    var toDomain: ChatUser {
+        return ChatUser(
+            userId: userId,
+            nick: nick,
+            profileImage: profileImage
+        )
+    }
+}
+
+extension ChatMessageRealmDTO {
+    var toDomain: ChatMessage {
+        let status: MessageSendStatus
+        switch sendStatus {
+        case "sending":
+            status = .sending
+        case "failed":
+            status = .failed
+        default:
+            status = .sent
+        }
+
+        return ChatMessage(
+            chatId: chatId,
+            roomId: roomId,
+            content: content,
+            createdAt: createdAt,
+            sender: sender?.toDomain ?? ChatUser(userId: "", nick: "", profileImage: nil),
+            files: Array(files),
+            sendStatus: status,
+            localId: nil,  // Realm에서 로드한 메시지는 localId 없음
+            localImages: nil
+        )
+    }
+}
+
+// MARK: - Domain -> Realm DTO
+extension ChatUser {
+    func toRealmDTO() -> ChatUserRealmDTO {
+        return ChatUserRealmDTO(
+            userId: userId,
+            nick: nick,
+            profileImage: profileImage
+        )
+    }
+}
+
+extension ChatMessage {
+    func toRealmDTO() -> ChatMessageRealmDTO {
+        let statusString: String
+        switch sendStatus {
+        case .sending:
+            statusString = "sending"
+        case .sent:
+            statusString = "sent"
+        case .failed:
+            statusString = "failed"
+        }
+
+        return ChatMessageRealmDTO(
+            chatId: chatId,
+            roomId: roomId,
+            content: content,
+            createdAt: createdAt,
+            sender: sender.toRealmDTO(),
+            files: files,
+            sendStatus: statusString
+        )
     }
 }

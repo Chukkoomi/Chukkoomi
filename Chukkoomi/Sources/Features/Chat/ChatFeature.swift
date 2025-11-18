@@ -7,6 +7,7 @@
 
 import ComposableArchitecture
 import Foundation
+import RealmSwift
 
 struct ChatFeature: Reducer {
 
@@ -30,6 +31,7 @@ struct ChatFeature: Reducer {
         case onAppear
         case loadMessages
         case messagesLoaded([ChatMessage], hasMore: Bool)
+        case messagesLoadedFromRealm([ChatMessage])
         case messageTextChanged(String)
         case sendMessageTapped
         case messageSent(ChatMessage, localId: String?)
@@ -53,8 +55,35 @@ struct ChatFeature: Reducer {
     func reduce(into state: inout State, action: Action) -> Effect<Action> {
         switch action {
         case .onAppear:
-            state.isLoading = true
-            return .send(.loadMessages)
+            // 채팅방이 없으면 (첫 메시지 전송 전) 로딩하지 않음
+            guard let roomId = state.chatRoom?.roomId else {
+                return .none
+            }
+
+            // 1. Realm에서 먼저 로드 (빠른 UI 표시)
+            return .run { send in
+                await MainActor.run {
+                    do {
+                        let realm = try Realm()
+                        let messageDTOs = realm.objects(ChatMessageRealmDTO.self)
+                            .filter("roomId == %@", roomId)
+                            .sorted(byKeyPath: "createdAt", ascending: true)
+                        let messages = Array(messageDTOs.map { $0.toDomain })
+
+                        Task {
+                            await send(.messagesLoadedFromRealm(messages))
+                            // 2. Realm 로드 후 HTTP로 동기화
+                            await send(.loadMessages)
+                        }
+                    } catch {
+                        print("Realm 메시지 로드 실패: \(error)")
+                        // Realm 실패 시 HTTP로 직접 로드
+                        Task {
+                            await send(.loadMessages)
+                        }
+                    }
+                }
+            }
 
         case .loadMessages:
             // 채팅방이 아직 생성되지 않은 경우 (첫 메시지 전송 전)
@@ -77,12 +106,26 @@ struct ChatFeature: Reducer {
                 }
             }
 
+        case .messagesLoadedFromRealm(let realmMessages):
+            // Realm에서 로드한 메시지를 먼저 표시 (빠른 UX)
+            state.messages = realmMessages
+            state.isLoading = true  // HTTP 동기화 중임을 표시
+            return .none
+
         case .messagesLoaded(let newMessages, let hasMore):
             state.isLoading = false
 
             if state.cursorDate == nil {
                 // 초기 로드: API에서 받은 순서 그대로 (오래된 메시지가 위, 최신 메시지가 아래)
-                state.messages = newMessages
+                // Realm에서 이미 로드했다면 병합 (중복 제거)
+                if !state.messages.isEmpty {
+                    // 기존 Realm 메시지와 새 메시지 병합 (chatId 기준 중복 제거)
+                    let existingIds = Set(state.messages.map { $0.chatId })
+                    let uniqueNewMessages = newMessages.filter { !existingIds.contains($0.chatId) }
+                    state.messages.append(contentsOf: uniqueNewMessages)
+                } else {
+                    state.messages = newMessages
+                }
             } else {
                 // 페이지네이션: 이전 메시지를 위에 추가
                 state.messages = newMessages + state.messages
@@ -94,7 +137,23 @@ struct ChatFeature: Reducer {
             }
 
             state.hasMoreMessages = hasMore
-            return .none
+
+            // Realm에 저장
+            return .run { send in
+                await MainActor.run {
+                    do {
+                        let realm = try Realm()
+                        try realm.write {
+                            for message in newMessages {
+                                let messageDTO = message.toRealmDTO()
+                                realm.add(messageDTO, update: .modified)
+                            }
+                        }
+                    } catch {
+                        print("Realm 메시지 저장 실패: \(error)")
+                    }
+                }
+            }
 
         case .messageTextChanged(let text):
             state.messageText = text
@@ -177,7 +236,21 @@ struct ChatFeature: Reducer {
             } else {
                 state.messages.append(message)
             }
-            return .none
+
+            // Realm에 저장
+            return .run { send in
+                await MainActor.run {
+                    do {
+                        let realm = try Realm()
+                        let messageDTO = message.toRealmDTO()
+                        try realm.write {
+                            realm.add(messageDTO, update: .modified)
+                        }
+                    } catch {
+                        print("Realm 메시지 저장 실패: \(error)")
+                    }
+                }
+            }
 
         case .chatRoomCreated(let chatRoom):
             state.chatRoom = chatRoom
