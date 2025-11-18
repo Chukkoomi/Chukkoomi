@@ -26,6 +26,7 @@ struct SearchFeature {
         var isLoadingNextPage: Bool = false
 
         @PresentationState var postCell: PostCellFeature.State?
+        @PresentationState var hashtagSearch: PostFeature.State?
     }
     
     // MARK: - Action
@@ -46,6 +47,7 @@ struct SearchFeature {
         case recentSearchesLoaded([FeedRecentWord])
         case postItemAppeared(String)
         case postCell(PresentationAction<PostCellFeature.Action>)
+        case hashtagSearch(PresentationAction<PostFeature.Action>)
     }
     
     // MARK: - Body
@@ -77,16 +79,17 @@ struct SearchFeature {
                 return .none
                 
             case .search:
-                guard !state.searchText.isEmpty else {
-                    return .none
-                }
-                
-                let trimmedKeyword = state.searchText.trimmingCharacters(in: .whitespaces)
-                
-                // TODO: 검색 결과 화면으로 이동
-                
-                
+                // 입력 정규화: 앞의 # 제거, 공백 제거
+                let trimmed = state.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return .none }
+                let normalized = trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
+                guard !normalized.isEmpty else { return .none }
+
+                // 해시태그 검색 화면으로 push
+                state.hashtagSearch = PostFeature.State(searchHashtag: normalized)
+
                 // Realm에 최근 검색어 저장
+                let keywordToSave = normalized
                 return .run { send in
                     await MainActor.run {
                         do {
@@ -96,7 +99,7 @@ struct SearchFeature {
                             
                             // 기존에 같은 키워드가 있으면 삭제 (현재 사용자만)
                             if let existingWord = realm.objects(FeedRecentWordDTO.self)
-                                .filter("userId == %@ AND keyword == %@", userId, trimmedKeyword)
+                                .filter("userId == %@ AND keyword == %@", userId, keywordToSave)
                                 .first {
                                 try realm.write {
                                     realm.delete(existingWord)
@@ -104,7 +107,7 @@ struct SearchFeature {
                             }
                             
                             // 새로운 검색어 추가
-                            let newWord = FeedRecentWordDTO(userId: userId, keyword: trimmedKeyword, searchedAt: Date())
+                            let newWord = FeedRecentWordDTO(userId: userId, keyword: keywordToSave, searchedAt: Date())
                             try realm.write {
                                 realm.add(newWord)
                             }
@@ -118,8 +121,6 @@ struct SearchFeature {
                             Task {
                                 send(.recentSearchesLoaded(recentWords))
                             }
-                            
-                            // TODO: 실제 검색 API 호출
                         } catch {
                             print("최근 검색어 저장 실패: \(error)")
                         }
@@ -270,10 +271,16 @@ struct SearchFeature {
 
             case .postCell:
                 return .none
+
+            case .hashtagSearch:
+                return .none
             }
         }
         .ifLet(\.$postCell, action: \.postCell) {
             PostCellFeature()
+        }
+        .ifLet(\.$hashtagSearch, action: \.hashtagSearch) {
+            PostFeature()
         }
     }
 }
@@ -292,3 +299,4 @@ extension SearchFeature {
         }
     }
 }
+

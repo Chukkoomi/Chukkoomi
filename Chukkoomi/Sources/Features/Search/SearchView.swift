@@ -25,6 +25,7 @@ struct SearchView: View {
                         isFocused: $isSearchFieldFocused,
                         placeholder: "해시태그로 검색해보세요",
                         onSubmit: {
+                            isSearchFieldFocused = false
                             viewStore.send(.search)
                         },
                         onClear: {
@@ -68,6 +69,12 @@ struct SearchView: View {
             }
             // 네비게이션 연결
             .modifier(SearchNavigation(store: store))
+            // 해시태그 검색 결과(PostView) 네비게이션
+            .navigationDestination(
+                store: store.scope(state: \.$hashtagSearch, action: \.hashtagSearch)
+            ) { store in
+                PostView(store: store)
+            }
         }
     }
 
