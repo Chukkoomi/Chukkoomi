@@ -17,6 +17,8 @@ struct UserSearchFeature {
         var searchResults: [SearchResult] = []
         var isLoading: Bool = false
         var isSearching: Bool = false
+        var excludeMyself: Bool = true  // 기본값: 자신 제외 (프로필용)
+        var useDelegate: Bool = false // delegate 사용 여부 (SharePost에서 사용)
 
         @PresentationState var otherProfile: OtherProfileFeature.State?
     }
@@ -28,9 +30,18 @@ struct UserSearchFeature {
         case userTapped(String) // userId
         case searchResultsLoaded([SearchResult])
         case clearSearch
+        case closeButtonTapped
 
         // Navigation
         case otherProfile(PresentationAction<OtherProfileFeature.Action>)
+
+        // Delegate
+        case delegate(Delegate)
+
+        enum Delegate: Equatable {
+            case userSelected(User)
+            case dismiss
+        }
     }
 
     // MARK: - Body
@@ -54,16 +65,20 @@ struct UserSearchFeature {
                 state.isLoading = true
                 state.isSearching = true
 
-                return .run { [searchText = state.searchText] send in
+                return .run { [searchText = state.searchText, excludeMyself = state.excludeMyself] send in
                     do {
                         let myId = UserDefaultsHelper.userId
 
                         // 닉네임으로 유저 검색 API 호출
-                        let users = try await NetworkManager.shared.performRequest(
+                        var users = try await NetworkManager.shared.performRequest(
                             UserRouter.search(nickname: searchText),
                             as: UserListDTO.self
                         ).toDomain
-                            .filter { $0.userId != myId }
+
+                        // excludeMyself가 true면 자신을 제외
+                        if excludeMyself, let myId = myId {
+                            users = users.filter { $0.userId != myId }
+                        }
 
                         // User를 SearchResult로 변환
                         let searchResults = users.map { user in
@@ -79,7 +94,19 @@ struct UserSearchFeature {
                 }
 
             case .userTapped(let userId):
-                state.otherProfile = OtherProfileFeature.State(userId: userId)
+                // useDelegate가 true면 delegate로 전달, 아니면 프로필로 이동
+                if state.useDelegate {
+                    // 검색 결과에서 해당 유저 찾기
+                    guard let selectedUser = state.searchResults.first(where: { $0.user.userId == userId })?.user else {
+                        return .none
+                    }
+                    return .send(.delegate(.userSelected(selectedUser)))
+                } else {
+                    state.otherProfile = OtherProfileFeature.State(userId: userId)
+                    return .none
+                }
+
+            case .delegate:
                 return .none
 
             case .searchResultsLoaded(let results):
@@ -92,6 +119,9 @@ struct UserSearchFeature {
                 state.searchResults = []
                 state.isSearching = false
                 return .none
+
+            case .closeButtonTapped:
+                return .send(.delegate(.dismiss))
 
             case .otherProfile:
                 return .none
