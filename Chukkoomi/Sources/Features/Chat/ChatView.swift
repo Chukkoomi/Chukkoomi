@@ -92,6 +92,7 @@ struct ChatView: View {
                             scrollProxy.scrollTo(lastMessage.uniqueId, anchor: .bottom)
                         }
                     }
+                    .scrollDismissesKeyboard(.immediately)
                 }
 
                 Divider()
@@ -140,6 +141,11 @@ struct ChatView: View {
                     }
                 }
             }
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+            )
             .navigationTitle(opponentNickname(chatRoom: viewStore.chatRoom, opponent: viewStore.opponent, myUserId: viewStore.myUserId))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
