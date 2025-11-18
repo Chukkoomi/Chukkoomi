@@ -81,7 +81,6 @@ struct EditVideoView: View {
                             }
                         )
                         .padding(.top, AppPadding.medium)
-                        .padding(.horizontal, AppPadding.large)
                     }
                 }
                 .padding(.top, AppPadding.large)
@@ -586,35 +585,6 @@ private class PlayheadUIView: UIView {
         if lineRect.height > 0 {
             UIBezierPath(rect: lineRect).fill()
         }
-    }
-}
-
-// MARK: - Playhead View (SwiftUI - 사용 안 함)
-private struct PlayheadView: View {
-    var body: some View {
-        VStack(spacing: 0) {
-            // 상단 삼각형 (재생 헤드)
-            Triangle()
-                .fill(Color.black)
-                .frame(width: 12, height: 8)
-
-            // 세로선
-            Rectangle()
-                .fill(Color.black)
-                .frame(width: 2)
-        }
-    }
-}
-
-// MARK: - Triangle Shape
-private struct Triangle: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
-        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.closeSubpath()
-        return path
     }
 }
 
