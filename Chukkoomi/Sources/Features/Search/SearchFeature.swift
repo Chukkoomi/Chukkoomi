@@ -25,7 +25,7 @@ struct SearchFeature {
         var nextCursor: String? = nil
         var isLoadingNextPage: Bool = false
 
-        @PresentationState var postCell: PostCellFeature.State?
+        @PresentationState var postDetail: PostFeature.State?
         @PresentationState var hashtagSearch: PostFeature.State?
     }
     
@@ -46,7 +46,7 @@ struct SearchFeature {
         case deleteRecentSearch(String)
         case recentSearchesLoaded([FeedRecentWord])
         case postItemAppeared(String)
-        case postCell(PresentationAction<PostCellFeature.Action>)
+        case postDetail(PresentationAction<PostFeature.Action>)
         case hashtagSearch(PresentationAction<PostFeature.Action>)
     }
     
@@ -266,18 +266,24 @@ struct SearchFeature {
                 }
 
             case let .postLoaded(post):
-                state.postCell = PostCellFeature.State(post: post)
+                // 단일 게시글을 위한 PostFeature.State 생성
+                // postCells에 해당 게시글만 포함시키고, isDetailMode를 true로 설정
+                var postFeatureState = PostFeature.State()
+                postFeatureState.postCells = [PostCellFeature.State(post: post)]
+                postFeatureState.nextCursor = "0" // 페이지네이션 비활성화
+                postFeatureState.isDetailMode = true // 상세 모드 활성화 (새로고침 비활성화)
+                state.postDetail = postFeatureState
                 return .none
 
-            case .postCell:
+            case .postDetail:
                 return .none
 
             case .hashtagSearch:
                 return .none
             }
         }
-        .ifLet(\.$postCell, action: \.postCell) {
-            PostCellFeature()
+        .ifLet(\.$postDetail, action: \.postDetail) {
+            PostFeature()
         }
         .ifLet(\.$hashtagSearch, action: \.hashtagSearch) {
             PostFeature()

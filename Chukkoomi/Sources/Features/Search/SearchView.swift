@@ -69,12 +69,6 @@ struct SearchView: View {
             }
             // 네비게이션 연결
             .modifier(SearchNavigation(store: store))
-            // 해시태그 검색 결과(PostView) 네비게이션
-            .navigationDestination(
-                store: store.scope(state: \.$hashtagSearch, action: \.hashtagSearch)
-            ) { store in
-                PostView(store: store)
-            }
         }
     }
 
@@ -276,13 +270,14 @@ private struct SearchNavigation: ViewModifier {
     func body(content: Content) -> some View {
         content
             .navigationDestination(
-                store: store.scope(state: \.$postCell, action: \.postCell)
+                store: store.scope(state: \.$postDetail, action: \.postDetail)
             ) { store in
-                VStack {
-                    PostCellView(store: store)
-                    Spacer()
-                }
-                .navigationTitle("게시글")
+                PostView(store: store)
+            }
+            .navigationDestination(
+                store: store.scope(state: \.$hashtagSearch, action: \.hashtagSearch)
+            ) { store in
+                PostView(store: store)
             }
     }
 }
