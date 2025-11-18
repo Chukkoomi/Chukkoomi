@@ -98,9 +98,16 @@ struct MyProfileFeature {
         case settingsMenu(PresentationAction<SettingsMenuAction>)
         case postDetail(PresentationAction<PostFeature.Action>)
 
+        // Delegate
+        case delegate(Delegate)
+
         enum SettingsMenuAction: Equatable {
             case logout
             case deleteAccount
+        }
+
+        enum Delegate: Equatable {
+            case switchToPostTab
         }
     }
     
@@ -154,8 +161,8 @@ struct MyProfileFeature {
                 return .none
                 
             case .addPostButtonTapped:
-                // TODO: 게시글 작성 화면으로 이동
-                return .none
+                // Post 탭으로 전환 요청
+                return .send(.delegate(.switchToPostTab))
                 
             case .editProfileButtonTapped:
                 guard let profile = state.profile else { return .none }
@@ -425,6 +432,9 @@ struct MyProfileFeature {
                 return .none
 
             case .settingsMenu:
+                return .none
+
+            case .delegate:
                 return .none
             }
         }

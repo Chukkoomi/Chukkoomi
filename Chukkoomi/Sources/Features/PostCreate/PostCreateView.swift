@@ -12,53 +12,55 @@ struct PostCreateView: View {
     let store: StoreOf<PostCreateFeature>
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            mediaSelectionSection
-
-            categorySection
-
-            contentSection
-
-            Spacer()
-
-            // 에러 메시지
-            if let errorMessage = store.errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundColor(.red)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                mediaSelectionSection
+                
+                categorySection
+                
+                contentSection
+                
+                Spacer()
+                
+                // 에러 메시지
+                if let errorMessage = store.errorMessage {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+                
+                // 업로드 버튼
+                FillButton(
+                    title: buttonTitle,
+                    isLoading: store.isUploading,
+                    isEnabled: store.canUpload
+                ) {
+                    store.send(.uploadButtonTapped)
+                }
             }
-
-            // 업로드 버튼
-            FillButton(
-                title: buttonTitle,
-                isLoading: store.isUploading,
-                isEnabled: store.canUpload
-            ) {
-                store.send(.uploadButtonTapped)
+            .padding(.horizontal, AppPadding.large)
+            .padding(.vertical, 16)
+            .dismissKeyboardOnTap()
+            .keyboardDoneButton()
+            .navigationTitle(store.navigationTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .fullScreenCover(
+                store: store.scope(state: \.$galleryPicker, action: \.galleryPicker)
+            ) { store in
+                NavigationStack {
+                    GalleryPickerView(store: store)
+                }
             }
-        }
-        .padding(.horizontal, AppPadding.large)
-        .padding(.vertical, 16)
-        .dismissKeyboardOnTap()
-        .keyboardDoneButton()
-        .navigationTitle(store.navigationTitle)
-        .navigationBarTitleDisplayMode(.inline)
-        .fullScreenCover(
-            store: store.scope(state: \.$galleryPicker, action: \.galleryPicker)
-        ) { store in
-            NavigationStack {
-                GalleryPickerView(store: store)
+            .alert(alertTitle, isPresented: Binding(
+                get: { store.showSuccessAlert },
+                set: { _ in store.send(.dismissSuccessAlert) }
+            )) {
+                Button("확인", role: .cancel) {
+                    store.send(.dismissSuccessAlert)
+                }
+            } message: {
+                Text(alertMessage)
             }
-        }
-        .alert(alertTitle, isPresented: Binding(
-            get: { store.showSuccessAlert },
-            set: { _ in store.send(.dismissSuccessAlert) }
-        )) {
-            Button("확인", role: .cancel) {
-                store.send(.dismissSuccessAlert)
-            }
-        } message: {
-            Text(alertMessage)
         }
     }
 
