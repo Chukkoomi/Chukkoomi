@@ -1295,7 +1295,7 @@ private class SubtitleBlockUIView: UIView {
         layer.cornerRadius = 4
         clipsToBounds = true
         
-        // 왼쪽 핸들 (VideoTimelineTrimmer 스타일)
+        // 왼쪽 핸들
         leftHandle = UIView()
         leftHandle.backgroundColor = UIColor.systemBlue
         leftHandle.layer.cornerRadius = 4
@@ -1318,7 +1318,7 @@ private class SubtitleBlockUIView: UIView {
         leftHandle.addGestureRecognizer(leftPan)
         leftHandle.isUserInteractionEnabled = true
         
-        // 오른쪽 핸들 (VideoTimelineTrimmer 스타일)
+        // 오른쪽 핸들
         rightHandle = UIView()
         rightHandle.backgroundColor = UIColor.systemBlue
         rightHandle.layer.cornerRadius = 4
@@ -1361,7 +1361,7 @@ private class SubtitleBlockUIView: UIView {
         rightHandle.frame = CGRect(x: bounds.width - handleWidth, y: 0, width: handleWidth, height: bounds.height)
         
         // 제거 버튼
-        removeButton.frame = CGRect(x: bounds.width - 20, y: 4, width: 16, height: 16)
+        removeButton.frame = CGRect(x: bounds.width - handleWidth - 4 - 16, y: 4, width: 16, height: 16)
     }
     
     func updatePosition() {
@@ -1435,41 +1435,6 @@ private class SubtitleBlockUIView: UIView {
     
     @objc private func handleRemove() {
         onRemove?(subtitle.id)
-    }
-}
-
-// MARK: - Subtitle Block View
-private struct SubtitleBlockView: View {
-    let subtitle: EditVideoFeature.Subtitle
-    let duration: Double
-    let width: CGFloat
-    let onRemove: () -> Void
-    
-    var body: some View {
-        let startPosition = duration > 0 ? (subtitle.startTime / duration) * width : 0
-        let endPosition = duration > 0 ? (subtitle.endTime / duration) * width : 0
-        let blockWidth = max(endPosition - startPosition, 20) // 최소 너비 20
-        
-        HStack(spacing: 0) {
-            // 자막 블록
-            Rectangle()
-                .fill(Color.blue.opacity(0.6))
-                .frame(width: blockWidth, height: 40)
-                .overlay(
-                    // 제거 버튼
-                    Button {
-                        onRemove()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundStyle(.white)
-                            .background(Circle().fill(Color.black.opacity(0.5)))
-                    }
-                        .padding(4)
-                    , alignment: .topTrailing)
-                .cornerRadius(4)
-        }
-        .offset(x: startPosition)
     }
 }
 
