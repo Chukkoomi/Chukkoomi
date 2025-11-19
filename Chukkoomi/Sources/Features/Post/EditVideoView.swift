@@ -111,6 +111,19 @@ struct EditVideoView: View {
                     ExportingOverlayView(progress: viewStore.exportProgress)
                 }
             }
+            .overlay {
+                if viewStore.isShowingSubtitleInput {
+                    SubtitleInputOverlayView(
+                        text: viewStore.binding(
+                            get: \.subtitleInputText,
+                            send: { .updateSubtitleInputText($0) }
+                        ),
+                        errorMessage: viewStore.subtitleInputValidationError,
+                        onConfirm: { viewStore.send(.confirmSubtitleInput) },
+                        onCancel: { viewStore.send(.cancelSubtitleInput) }
+                    )
+                }
+            }
             .alert(store: store.scope(state: \.$alert, action: \.alert))
         }
     }
@@ -708,6 +721,7 @@ private struct VideoTimelineEditor: UIViewRepresentable {
                     existingBlock.duration = safeDuration
                     existingBlock.timelineWidth = timelineWidth
                     existingBlock.frame = CGRect(x: startPosition, y: 0, width: blockWidth, height: subtitleHeight)
+                    existingBlock.updateTextLabel()
                 } else {
                     // 새 블록 생성
                     let blockView = SubtitleBlockUIView(
@@ -1265,6 +1279,7 @@ private class SubtitleBlockUIView: UIView {
     private var leftHandle: UIView!
     private var rightHandle: UIView!
     private var removeButton: UIButton!
+    private var textLabel: UILabel!
     
     init(
         subtitle: EditVideoFeature.Subtitle,
@@ -1350,19 +1365,38 @@ private class SubtitleBlockUIView: UIView {
         removeButton.layer.cornerRadius = 8
         removeButton.addTarget(self, action: #selector(handleRemove), for: .touchUpInside)
         addSubview(removeButton)
+
+        // 텍스트 라벨
+        textLabel = UILabel()
+        textLabel.font = UIFont.systemFont(ofSize: 12, weight: .medium)
+        textLabel.textColor = .white
+        textLabel.textAlignment = .center
+        textLabel.numberOfLines = 2
+        textLabel.lineBreakMode = .byTruncatingTail
+        addSubview(textLabel)
+        updateTextLabel()
     }
     
     override func layoutSubviews() {
         super.layoutSubviews()
-        
+
         // 왼쪽 핸들
         leftHandle.frame = CGRect(x: 0, y: 0, width: handleWidth, height: bounds.height)
-        
+
         // 오른쪽 핸들
         rightHandle.frame = CGRect(x: bounds.width - handleWidth, y: 0, width: handleWidth, height: bounds.height)
-        
+
         // 제거 버튼
         removeButton.frame = CGRect(x: bounds.width - handleWidth - 4 - 16, y: 4, width: 16, height: 16)
+
+        // 텍스트 라벨 (핸들과 제거 버튼 사이 영역)
+        let textX = handleWidth + 4
+        let textWidth = bounds.width - handleWidth * 2 - 8
+        textLabel.frame = CGRect(x: textX, y: 0, width: textWidth, height: bounds.height)
+    }
+
+    func updateTextLabel() {
+        textLabel.text = subtitle.text.isEmpty ? "" : subtitle.text
     }
     
     func updatePosition() {
@@ -1491,21 +1525,21 @@ private struct FilterButton: View {
 // MARK: - Exporting Overlay View
 private struct ExportingOverlayView: View {
     let progress: Double
-    
+
     var body: some View {
         ZStack {
             Color.black.opacity(0.5)
                 .ignoresSafeArea()
-            
+
             VStack(spacing: AppPadding.large) {
                 ProgressView()
                     .scaleEffect(1.5)
                     .tint(.white)
-                
+
                 Text("영상 내보내는 중...")
                     .font(.appSubTitle)
                     .foregroundStyle(.white)
-                
+
                 Text("\(Int(progress * 100))%")
                     .font(.appBody)
                     .foregroundStyle(.white.opacity(0.8))
@@ -1513,6 +1547,69 @@ private struct ExportingOverlayView: View {
             .padding(AppPadding.large * 2)
             .background(Color.black.opacity(0.8))
             .cornerRadius(12)
+        }
+    }
+}
+
+// MARK: - Subtitle Input Overlay View
+private struct SubtitleInputOverlayView: View {
+    @Binding var text: String
+    let errorMessage: String?
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.7)
+
+            VStack(spacing: 0) {
+                // 툴바
+                HStack {
+                    Button("취소") {
+                        onCancel()
+                    }
+                    .foregroundStyle(.white)
+
+                    Spacer()
+
+                    Button("완료") {
+                        onConfirm()
+                    }
+                    .foregroundStyle(errorMessage == nil ? .white : .gray)
+                    .disabled(errorMessage != nil)
+                }
+                .padding(.horizontal, AppPadding.large)
+                .padding(.vertical, AppPadding.medium)
+
+                Spacer()
+
+                // 텍스트 필드 및 에러 메시지
+                VStack(alignment: .center, spacing: 4) {
+                    TextField("", text: $text)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($isFocused)
+                        .submitLabel(.done)
+                        .onSubmit {
+                            if errorMessage == nil {
+                                onConfirm()
+                            }
+                        }
+                        .multilineTextAlignment(.center)
+
+                    // 고정 높이 에러 메시지 영역
+                    Text(errorMessage ?? " ")
+                        .font(.appCaption)
+                        .foregroundStyle(.red)
+                        .frame(height: 16)
+                        .opacity(errorMessage == nil ? 0 : 1)
+                }
+                .padding(.horizontal, AppPadding.large)
+                .padding(.bottom, AppPadding.large)
+            }
+        }
+        .onAppear {
+            isFocused = true
         }
     }
 }

@@ -36,6 +36,13 @@ struct EditVideoFeature {
         var isExporting: Bool = false
         var exportProgress: Double = 0.0
 
+        // 자막 텍스트 입력 오버레이
+        var isShowingSubtitleInput: Bool = false
+        var subtitleInputText: String = ""
+        var subtitleInputValidationError: String? = nil
+        var pendingSubtitleStartTime: Double? = nil
+        var pendingSubtitleEndTime: Double? = nil
+
         // Alert
         @Presents var alert: AlertState<Action.Alert>?
 
@@ -97,6 +104,9 @@ struct EditVideoFeature {
         case removeSubtitle(UUID)
         case updateSubtitleStartTime(UUID, Double)
         case updateSubtitleEndTime(UUID, Double)
+        case updateSubtitleInputText(String)
+        case confirmSubtitleInput
+        case cancelSubtitleInput
 
         // Alert
         case alert(PresentationAction<Alert>)
@@ -310,11 +320,71 @@ struct EditVideoFeature {
                     return .none
                 }
 
-                let newSubtitle = Subtitle(startTime: startTime, endTime: endTime)
+                // 텍스트 입력 오버레이 표시
+                state.isShowingSubtitleInput = true
+                state.subtitleInputText = ""
+                state.subtitleInputValidationError = "자막 텍스트를 입력해주세요."
+                state.pendingSubtitleStartTime = startTime
+                state.pendingSubtitleEndTime = endTime
+                return .none
+
+            case .updateSubtitleInputText(let text):
+                state.subtitleInputText = text
+
+                // 텍스트 검증
+                let trimmedText = text.trimmingCharacters(in: .whitespaces)
+
+                if trimmedText.isEmpty {
+                    state.subtitleInputValidationError = "자막 텍스트를 입력해주세요."
+                } else if trimmedText.count > 15 {
+                    state.subtitleInputValidationError = "자막은 15자 이하로 입력해주세요."
+                } else {
+                    state.subtitleInputValidationError = nil
+                }
+
+                return .none
+
+            case .confirmSubtitleInput:
+                // 검증 에러가 있으면 무시
+                guard state.subtitleInputValidationError == nil else {
+                    return .none
+                }
+
+                // 입력한 텍스트로 자막 생성
+                guard let startTime = state.pendingSubtitleStartTime,
+                      let endTime = state.pendingSubtitleEndTime else {
+                    return .none
+                }
+
+                // 텍스트 검증
+                let trimmedText = state.subtitleInputText.trimmingCharacters(in: .whitespaces)
+
+                let newSubtitle = Subtitle(
+                    startTime: startTime,
+                    endTime: endTime,
+                    text: trimmedText
+                )
                 state.editState.subtitles.append(newSubtitle)
                 // 시작 시간 기준으로 정렬
                 state.editState.subtitles.sort { $0.startTime < $1.startTime }
-                print("✅ 자막 추가: \(startTime)s ~ \(endTime)s")
+
+                // 오버레이 닫기
+                state.isShowingSubtitleInput = false
+                state.subtitleInputText = ""
+                state.subtitleInputValidationError = nil
+                state.pendingSubtitleStartTime = nil
+                state.pendingSubtitleEndTime = nil
+
+                print("✅ 자막 추가: \(startTime)s ~ \(endTime)s, 텍스트: \(newSubtitle.text)")
+                return .none
+
+            case .cancelSubtitleInput:
+                // 오버레이 닫기
+                state.isShowingSubtitleInput = false
+                state.subtitleInputText = ""
+                state.subtitleInputValidationError = nil
+                state.pendingSubtitleStartTime = nil
+                state.pendingSubtitleEndTime = nil
                 return .none
 
             case .removeSubtitle(let id):
