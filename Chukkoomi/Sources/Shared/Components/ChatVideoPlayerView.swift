@@ -134,28 +134,14 @@ struct ChatVideoPlayerView: View {
                 let transform = try? await track.load(.preferredTransform)
 
                 if let size = naturalSize, size.width > 0 && size.height > 0 {
-                    print("🎬 [영상 크기] naturalSize: \(size.width) x \(size.height)")
-
-                    // preferredTransform 로그
-                    if let transform = transform {
-                        print("🎬 [영상 크기] transform: a=\(transform.a), b=\(transform.b), c=\(transform.c), d=\(transform.d)")
-                    } else {
-                        print("🎬 [영상 크기] transform: nil")
-                    }
-
                     // preferredTransform을 확인해서 실제 표시 크기 결정
                     var actualWidth = size.width
                     var actualHeight = size.height
 
                     // 90도 또는 270도 회전된 경우 (세로 영상)
                     if let transform = transform, transform.a == 0 && abs(transform.b) == 1.0 {
-                        print("🎬 [영상 크기] ✅ transform 적용됨 (세로 영상으로 판단)")
                         swap(&actualWidth, &actualHeight)
-                    } else {
-                        print("🎬 [영상 크기] ❌ transform 적용 안됨 (가로 영상으로 판단)")
                     }
-
-                    print("🎬 [영상 크기] actualSize: \(actualWidth) x \(actualHeight)")
 
                     // 최대 크기 제한
                     let maxHeight: CGFloat = 320
@@ -169,19 +155,15 @@ struct ChatVideoPlayerView: View {
                     // 가로/세로에 따라 다른 기준으로 축소
                     if actualWidth > actualHeight {
                         // 가로 영상: 너비를 기준으로
-                        print("🎬 [영상 크기] 가로 영상")
                         if finalWidth > maxWidth {
                             let ratio = maxWidth / finalWidth
-                            print("🎬 [영상 크기] 너비 기준 축소 - ratio: \(ratio)")
                             finalWidth *= ratio
                             finalHeight *= ratio
                         }
                     } else {
                         // 세로 영상: 높이를 기준으로
-                        print("🎬 [영상 크기] 세로 영상")
                         if finalHeight > maxHeight {
                             let ratio = maxHeight / finalHeight
-                            print("🎬 [영상 크기] 높이 기준 축소 - ratio: \(ratio)")
                             finalWidth *= ratio
                             finalHeight *= ratio
                         }
@@ -192,12 +174,9 @@ struct ChatVideoPlayerView: View {
                         let widthRatio = minWidth / finalWidth
                         let heightRatio = minHeight / finalHeight
                         let ratio = min(widthRatio, heightRatio)
-                        print("🎬 [영상 크기] 확대 필요 - ratio: \(ratio)")
                         finalWidth *= ratio
                         finalHeight *= ratio
                     }
-
-                    print("🎬 [영상 크기] finalSize: \(finalWidth) x \(finalHeight)")
 
                     await MainActor.run {
                         self.player = avPlayer
@@ -222,7 +201,6 @@ struct ChatVideoPlayerView: View {
                 self.isLoading = false
             }
         } catch {
-            print("동영상 로드 실패: \(error)")
             await MainActor.run {
                 self.isLoading = false
             }
