@@ -159,6 +159,7 @@ struct ChatView: View {
             .navigationTitle(opponentNickname(chatRoom: viewStore.chatRoom, opponent: viewStore.opponent, myUserId: viewStore.myUserId))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
         }
     }
 
