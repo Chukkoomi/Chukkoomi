@@ -134,438 +134,8 @@ struct EditVideoView: View {
     }
 }
 
-// MARK: - Filter Applying Overlay View
-private struct FilterApplyingOverlayView: View {
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.5)
-
-            VStack(spacing: AppPadding.medium) {
-                ProgressView()
-                    .scaleEffect(1.5)
-                    .tint(.white)
-
-                Text("필터 적용 중...")
-                    .font(.appBody)
-                    .foregroundStyle(.white)
-            }
-            .padding(AppPadding.large * 2)
-            .background(Color.black.opacity(0.8))
-            .cornerRadius(12)
-        }
-    }
-}
-
-// MARK: - Exporting Overlay View
-private struct ExportingOverlayView: View {
-    let progress: Double
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.5)
-                .ignoresSafeArea()
-
-            VStack(spacing: AppPadding.large) {
-                ProgressView()
-                    .scaleEffect(1.5)
-                    .tint(.white)
-
-                Text("영상 내보내는 중...")
-                    .font(.appSubTitle)
-                    .foregroundStyle(.white)
-
-                Text("\(Int(progress * 100))%")
-                    .font(.appBody)
-                    .foregroundStyle(.white.opacity(0.8))
-            }
-            .padding(AppPadding.large * 2)
-            .background(Color.black.opacity(0.8))
-            .cornerRadius(12)
-        }
-    }
-}
-
-// MARK: - Video Controls View
-private struct VideoControlsView: View {
-    let isPlaying: Bool
-    let onPlayPause: () -> Void
-
-    var body: some View {
-        // 재생/일시정지 버튼
-        Button {
-            onPlayPause()
-        } label: {
-            Group {
-                if isPlaying {
-                    AppIcon.pause
-                } else {
-                    AppIcon.play
-                }
-            }
-            .font(.system(size: 28))
-            .foregroundStyle(.black)
-        }
-    }
-}
-
-// MARK: - Time Ruler View (시간 눈금자)
-private class TimeRulerView: UIView {
-    var duration: Double = 0
-    var pixelsPerSecond: CGFloat = 50
-    var onSeek: ((Double) -> Void)?
-    private let timeFont = UIFont.systemFont(ofSize: 14, weight: .regular)
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        setupTapGesture()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        setupTapGesture()
-    }
-
-    private func setupTapGesture() {
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
-        addGestureRecognizer(tapGesture)
-        isUserInteractionEnabled = true
-    }
-
-    @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
-        let location = gesture.location(in: self)
-        let tappedTime = Double(location.x) / Double(pixelsPerSecond)
-        let clampedTime = min(max(tappedTime, 0), duration)
-        onSeek?(clampedTime)
-    }
-
-    override func draw(_ rect: CGRect) {
-        guard UIGraphicsGetCurrentContext() != nil else { return }
-
-        // 배경
-        UIColor.systemGray6.setFill()
-        UIRectFill(rect)
-
-        // 텍스트 속성
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.alignment = .center
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: timeFont,
-            .foregroundColor: UIColor.label,
-            .paragraphStyle: paragraphStyle
-        ]
-
-        // 1초 간격으로 눈금 그리기
-        let totalSeconds = Int(ceil(duration))
-        for second in 0...totalSeconds {
-            let xPosition = CGFloat(second) * pixelsPerSecond
-
-            // 세로선 그리기
-            UIColor.separator.setStroke()
-            let linePath = UIBezierPath()
-            linePath.move(to: CGPoint(x: xPosition, y: rect.height - 5))
-            linePath.addLine(to: CGPoint(x: xPosition, y: rect.height))
-            linePath.lineWidth = 1
-            linePath.stroke()
-
-            // 시간 텍스트 그리기
-            let timeText = "\(second)s"
-            let textSize = (timeText as NSString).size(withAttributes: attributes)
-            // 중앙 정렬
-            let textX = xPosition - textSize.width / 2
-            let textRect = CGRect(
-                x: textX,
-                y: 2,
-                width: textSize.width,
-                height: textSize.height
-            )
-            (timeText as NSString).draw(in: textRect, withAttributes: attributes)
-        }
-    }
-}
-
-// MARK: - Playhead UIView (네이티브)
-private class PlayheadUIView: UIView {
-    // 눈금자 높이와 그 아래 gap 높이 (삼각형은 gap에, 선은 그 아래에서 시작)
-    var rulerHeight: CGFloat = 20
-    var gapHeight: CGFloat = 16
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        self.isUserInteractionEnabled = false
-        self.isOpaque = false
-        self.backgroundColor = .clear
-        self.contentMode = .redraw
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func draw(_ rect: CGRect) {
-        guard UIGraphicsGetCurrentContext() != nil else { return }
-
-        UIColor.black.setFill()
-
-        // 삼각형 영역: 눈금자 아래 gap 공간 중앙에 배치
-        let triangleHeight = min(12, max(6, gapHeight * 0.8)) // gap에 맞춘 적당한 높이
-        let triangleTopY = rulerHeight + (gapHeight - triangleHeight) / 2
-        let triangleBottomY = triangleTopY + triangleHeight
-
-        // 상단 삼각형 (▼)
-        let trianglePath = UIBezierPath()
-        trianglePath.move(to: CGPoint(x: rect.midX, y: triangleBottomY))      // 아래 꼭지점
-        trianglePath.addLine(to: CGPoint(x: rect.midX - 6, y: triangleTopY))  // 왼쪽 위
-        trianglePath.addLine(to: CGPoint(x: rect.midX + 6, y: triangleTopY))  // 오른쪽 위
-        trianglePath.close()
-        trianglePath.fill()
-
-        // 세로선: gap 아래부터 아래로 그리기
-        let lineRect = CGRect(x: rect.midX - 1, y: rulerHeight + gapHeight, width: 2, height: rect.height - (rulerHeight + gapHeight))
-        if lineRect.height > 0 {
-            UIBezierPath(rect: lineRect).fill()
-        }
-    }
-}
-
-// MARK: - Subtitle Block UIView (핸들 포함)
-private class SubtitleBlockUIView: UIView {
-    private let handleWidth: CGFloat = 12
-    var subtitle: EditVideoFeature.Subtitle
-    var duration: Double
-    var timelineWidth: CGFloat
-    var pixelsPerSecond: CGFloat
-    var onStartTimeChanged: ((UUID, Double) -> Void)?
-    var onEndTimeChanged: ((UUID, Double) -> Void)?
-    var onRemove: ((UUID) -> Void)?
-
-    private var leftHandle: UIView!
-    private var rightHandle: UIView!
-    private var removeButton: UIButton!
-
-    init(
-        subtitle: EditVideoFeature.Subtitle,
-        duration: Double,
-        timelineWidth: CGFloat,
-        pixelsPerSecond: CGFloat,
-        onStartTimeChanged: @escaping (UUID, Double) -> Void,
-        onEndTimeChanged: @escaping (UUID, Double) -> Void,
-        onRemove: @escaping (UUID) -> Void
-    ) {
-        self.subtitle = subtitle
-        self.duration = duration
-        self.timelineWidth = timelineWidth
-        self.pixelsPerSecond = pixelsPerSecond
-        self.onStartTimeChanged = onStartTimeChanged
-        self.onEndTimeChanged = onEndTimeChanged
-        self.onRemove = onRemove
-
-        super.init(frame: .zero)
-        setupViews()
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    private func setupViews() {
-        backgroundColor = UIColor.systemBlue.withAlphaComponent(0.6)
-        layer.cornerRadius = 4
-        clipsToBounds = true
-
-        // 왼쪽 핸들 (VideoTimelineTrimmer 스타일)
-        leftHandle = UIView()
-        leftHandle.backgroundColor = UIColor.systemBlue
-        leftHandle.layer.cornerRadius = 4
-        addSubview(leftHandle)
-
-        // 왼쪽 핸들 그립 라인
-        let leftGrip = UIView()
-        leftGrip.backgroundColor = .white
-        leftGrip.layer.cornerRadius = 1
-        leftHandle.addSubview(leftGrip)
-        leftGrip.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            leftGrip.centerXAnchor.constraint(equalTo: leftHandle.centerXAnchor),
-            leftGrip.centerYAnchor.constraint(equalTo: leftHandle.centerYAnchor),
-            leftGrip.widthAnchor.constraint(equalToConstant: 2),
-            leftGrip.heightAnchor.constraint(equalToConstant: 12)
-        ])
-
-        let leftPan = UIPanGestureRecognizer(target: self, action: #selector(handleLeftPan(_:)))
-        leftHandle.addGestureRecognizer(leftPan)
-        leftHandle.isUserInteractionEnabled = true
-
-        // 오른쪽 핸들 (VideoTimelineTrimmer 스타일)
-        rightHandle = UIView()
-        rightHandle.backgroundColor = UIColor.systemBlue
-        rightHandle.layer.cornerRadius = 4
-        addSubview(rightHandle)
-
-        // 오른쪽 핸들 그립 라인
-        let rightGrip = UIView()
-        rightGrip.backgroundColor = .white
-        rightGrip.layer.cornerRadius = 1
-        rightHandle.addSubview(rightGrip)
-        rightGrip.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            rightGrip.centerXAnchor.constraint(equalTo: rightHandle.centerXAnchor),
-            rightGrip.centerYAnchor.constraint(equalTo: rightHandle.centerYAnchor),
-            rightGrip.widthAnchor.constraint(equalToConstant: 2),
-            rightGrip.heightAnchor.constraint(equalToConstant: 12)
-        ])
-
-        let rightPan = UIPanGestureRecognizer(target: self, action: #selector(handleRightPan(_:)))
-        rightHandle.addGestureRecognizer(rightPan)
-        rightHandle.isUserInteractionEnabled = true
-
-        // 제거 버튼
-        removeButton = UIButton(type: .custom)
-        removeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
-        removeButton.tintColor = .white
-        removeButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-        removeButton.layer.cornerRadius = 8
-        removeButton.addTarget(self, action: #selector(handleRemove), for: .touchUpInside)
-        addSubview(removeButton)
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-
-        // 왼쪽 핸들
-        leftHandle.frame = CGRect(x: 0, y: 0, width: handleWidth, height: bounds.height)
-
-        // 오른쪽 핸들
-        rightHandle.frame = CGRect(x: bounds.width - handleWidth, y: 0, width: handleWidth, height: bounds.height)
-
-        // 제거 버튼
-        removeButton.frame = CGRect(x: bounds.width - 20, y: 4, width: 16, height: 16)
-    }
-
-    func updatePosition() {
-        // 프레임 업데이트 (외부에서 호출)
-        let startPosition = duration > 0 ? (subtitle.startTime / duration) * timelineWidth : 0
-        let endPosition = duration > 0 ? (subtitle.endTime / duration) * timelineWidth : 0
-        let blockWidth = max(endPosition - startPosition, 20)
-
-        self.frame = CGRect(x: startPosition, y: self.frame.origin.y, width: blockWidth, height: self.frame.height)
-    }
-
-    @objc private func handleLeftPan(_ gesture: UIPanGestureRecognizer) {
-        guard let superview = superview else { return }
-
-        if gesture.state == .changed {
-            // superview 내에서의 터치 위치
-            let location = gesture.location(in: superview)
-
-            // 새로운 시작 위치
-            let newStartPosition = max(0, location.x)
-
-            // 끝 위치 계산
-            let endPosition = (subtitle.endTime / duration) * timelineWidth
-
-            // 최소 너비 유지 (0.5초에 해당하는 픽셀)
-            let minWidth = (0.5 / duration) * timelineWidth
-            let clampedPosition = min(newStartPosition, endPosition - minWidth)
-
-            // 시간으로 변환
-            let newStartTime = (clampedPosition / timelineWidth) * duration
-            let clampedTime = max(0, min(newStartTime, subtitle.endTime - 0.5))
-
-            // 즉시 프레임 업데이트 (드래그 중에는 애니메이션 없음)
-            let blockWidth = endPosition - clampedPosition
-            self.frame = CGRect(x: clampedPosition, y: self.frame.origin.y, width: blockWidth, height: self.frame.height)
-
-            // 상태 업데이트 콜백
-            onStartTimeChanged?(subtitle.id, clampedTime)
-        }
-    }
-
-    @objc private func handleRightPan(_ gesture: UIPanGestureRecognizer) {
-        guard let superview = superview else { return }
-
-        if gesture.state == .changed {
-            // superview 내에서의 터치 위치
-            let location = gesture.location(in: superview)
-
-            // 새로운 끝 위치
-            let newEndPosition = min(timelineWidth, location.x)
-
-            // 시작 위치 계산
-            let startPosition = (subtitle.startTime / duration) * timelineWidth
-
-            // 최소 너비 유지 (0.5초에 해당하는 픽셀)
-            let minWidth = (0.5 / duration) * timelineWidth
-            let clampedPosition = max(newEndPosition, startPosition + minWidth)
-
-            // 시간으로 변환
-            let newEndTime = (clampedPosition / timelineWidth) * duration
-            let clampedTime = min(duration, max(newEndTime, subtitle.startTime + 0.5))
-
-            // 즉시 프레임 업데이트 (드래그 중에는 애니메이션 없음)
-            let blockWidth = clampedPosition - startPosition
-            self.frame = CGRect(x: startPosition, y: self.frame.origin.y, width: blockWidth, height: self.frame.height)
-
-            // 상태 업데이트 콜백
-            onEndTimeChanged?(subtitle.id, clampedTime)
-        }
-    }
-
-    @objc private func handleRemove() {
-        onRemove?(subtitle.id)
-    }
-}
-
-// MARK: - Filter Selection View
-private struct FilterSelectionView: View {
-    let selectedFilter: VideoFilter?
-    let onFilterSelected: (VideoFilter) -> Void
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: AppPadding.medium) {
-                ForEach(VideoFilter.allCases, id: \.self) { filter in
-                    FilterButton(
-                        filter: filter,
-                        isSelected: selectedFilter == filter,
-                        action: {
-                            onFilterSelected(filter)
-                        }
-                    )
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Filter Button
-private struct FilterButton: View {
-    let filter: VideoFilter
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                // 필터 미리보기 (TODO: 나중에 실제 필터 적용된 썸네일로 변경)
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.gray.opacity(0.3))
-                    .frame(width: 80, height: 80)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
-                    )
-
-                // 필터 이름
-                Text(filter.displayName)
-                    .font(.appCaption)
-                    .foregroundStyle(isSelected ? .blue : .black)
-            }
-        }
-    }
-}
-
 // MARK: - Custom Video Player
-struct CustomVideoPlayerView: UIViewRepresentable {
+private struct CustomVideoPlayerView: UIViewRepresentable {
     let asset: PHAsset
     let preProcessedVideoURL: URL?  // AnimeGAN 등 전처리된 비디오
     let isPlaying: Bool
@@ -640,7 +210,7 @@ struct CustomVideoPlayerView: UIViewRepresentable {
         )
     }
 
-    final class Coordinator: NSObject {
+    class Coordinator: NSObject {
         var player: AVPlayer?
         var playerLayer: AVPlayerLayer?
         var timeObserver: Any?
@@ -836,6 +406,51 @@ struct CustomVideoPlayerView: UIViewRepresentable {
                 player?.removeTimeObserver(boundaryObserver)
             }
             player?.pause()
+        }
+    }
+}
+
+// MARK: - Filter Applying Overlay View
+private struct FilterApplyingOverlayView: View {
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+
+            VStack(spacing: AppPadding.medium) {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(.white)
+
+                Text("필터 적용 중...")
+                    .font(.appBody)
+                    .foregroundStyle(.white)
+            }
+            .padding(AppPadding.large * 2)
+            .background(Color.black.opacity(0.8))
+            .cornerRadius(12)
+        }
+    }
+}
+
+// MARK: - Video Controls View
+private struct VideoControlsView: View {
+    let isPlaying: Bool
+    let onPlayPause: () -> Void
+
+    var body: some View {
+        // 재생/일시정지 버튼
+        Button {
+            onPlayPause()
+        } label: {
+            Group {
+                if isPlaying {
+                    AppIcon.pause
+                } else {
+                    AppIcon.play
+                }
+            }
+            .font(.system(size: 28))
+            .foregroundStyle(.black)
         }
     }
 }
@@ -1199,6 +814,577 @@ private struct VideoTimelineEditor: UIViewRepresentable {
     }
 }
 
+// MARK: - Time Ruler View
+private class TimeRulerView: UIView {
+    var duration: Double = 0
+    var pixelsPerSecond: CGFloat = 50
+    var onSeek: ((Double) -> Void)?
+    private let timeFont = UIFont.systemFont(ofSize: 14, weight: .regular)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupTapGesture()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupTapGesture()
+    }
+
+    private func setupTapGesture() {
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        addGestureRecognizer(tapGesture)
+        isUserInteractionEnabled = true
+    }
+
+    @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+        let location = gesture.location(in: self)
+        let tappedTime = Double(location.x) / Double(pixelsPerSecond)
+        let clampedTime = min(max(tappedTime, 0), duration)
+        onSeek?(clampedTime)
+    }
+
+    override func draw(_ rect: CGRect) {
+        guard UIGraphicsGetCurrentContext() != nil else { return }
+
+        // 배경
+        UIColor.systemGray6.setFill()
+        UIRectFill(rect)
+
+        // 텍스트 속성
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: timeFont,
+            .foregroundColor: UIColor.label,
+            .paragraphStyle: paragraphStyle
+        ]
+
+        // 1초 간격으로 눈금 그리기
+        let totalSeconds = Int(ceil(duration))
+        for second in 0...totalSeconds {
+            let xPosition = CGFloat(second) * pixelsPerSecond
+
+            // 세로선 그리기
+            UIColor.separator.setStroke()
+            let linePath = UIBezierPath()
+            linePath.move(to: CGPoint(x: xPosition, y: rect.height - 5))
+            linePath.addLine(to: CGPoint(x: xPosition, y: rect.height))
+            linePath.lineWidth = 1
+            linePath.stroke()
+
+            // 시간 텍스트 그리기
+            let timeText = "\(second)s"
+            let textSize = (timeText as NSString).size(withAttributes: attributes)
+            // 중앙 정렬
+            let textX = xPosition - textSize.width / 2
+            let textRect = CGRect(
+                x: textX,
+                y: 2,
+                width: textSize.width,
+                height: textSize.height
+            )
+            (timeText as NSString).draw(in: textRect, withAttributes: attributes)
+        }
+    }
+}
+
+// MARK: - Playhead UIView
+private class PlayheadUIView: UIView {
+    // 눈금자 높이와 그 아래 gap 높이 (삼각형은 gap에, 선은 그 아래에서 시작)
+    var rulerHeight: CGFloat = 20
+    var gapHeight: CGFloat = 16
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        self.isUserInteractionEnabled = false
+        self.isOpaque = false
+        self.backgroundColor = .clear
+        self.contentMode = .redraw
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func draw(_ rect: CGRect) {
+        guard UIGraphicsGetCurrentContext() != nil else { return }
+
+        UIColor.black.setFill()
+
+        // 삼각형 영역: 눈금자 아래 gap 공간 중앙에 배치
+        let triangleHeight = min(12, max(6, gapHeight * 0.8)) // gap에 맞춘 적당한 높이
+        let triangleTopY = rulerHeight + (gapHeight - triangleHeight) / 2
+        let triangleBottomY = triangleTopY + triangleHeight
+
+        // 상단 삼각형 (▼)
+        let trianglePath = UIBezierPath()
+        trianglePath.move(to: CGPoint(x: rect.midX, y: triangleBottomY))      // 아래 꼭지점
+        trianglePath.addLine(to: CGPoint(x: rect.midX - 6, y: triangleTopY))  // 왼쪽 위
+        trianglePath.addLine(to: CGPoint(x: rect.midX + 6, y: triangleTopY))  // 오른쪽 위
+        trianglePath.close()
+        trianglePath.fill()
+
+        // 세로선: gap 아래부터 아래로 그리기
+        let lineRect = CGRect(x: rect.midX - 1, y: rulerHeight + gapHeight, width: 2, height: rect.height - (rulerHeight + gapHeight))
+        if lineRect.height > 0 {
+            UIBezierPath(rect: lineRect).fill()
+        }
+    }
+}
+
+private struct VideoTimelineTrimmer: View {
+    let videoAsset: PHAsset
+    let duration: Double
+    let trimStartTime: Double
+    let trimEndTime: Double
+    let onTrimStartChanged: (Double) -> Void
+    let onTrimEndChanged: (Double) -> Void
+
+    @State private var isDraggingStart = false
+    @State private var isDraggingEnd = false
+
+    private let handleWidth: CGFloat = 12
+    private let minTrimDuration: Double = 0.1
+    private let thumbnailCount = 8
+
+    var body: some View {
+        GeometryReader { geometry in
+            let totalWidth = geometry.size.width
+            let startPosition = duration > 0 ? (trimStartTime / duration) * totalWidth : 0
+            let endPosition = duration > 0 ? (trimEndTime / duration) * totalWidth : totalWidth
+            let selectionWidth = endPosition - startPosition
+            let thumbnailWidth = max(0, totalWidth / CGFloat(thumbnailCount))
+
+            ZStack(alignment: .leading) {
+                // 배경 타임라인 (비디오 썸네일)
+                ThumbnailsView(
+                    videoAsset: videoAsset,
+                    duration: duration,
+                    thumbnailCount: thumbnailCount,
+                    thumbnailWidth: thumbnailWidth,
+                    height: geometry.size.height,
+                    size: geometry.size
+                )
+
+                // 선택된 영역 테두리
+                SelectionBorderView(
+                    width: selectionWidth,
+                    offset: startPosition
+                )
+
+                // 선택 영역 배경 (어두운 오버레이)
+                SelectionOverlayView(
+                    startPosition: startPosition,
+                    selectionWidth: selectionWidth,
+                    endPosition: endPosition,
+                    totalWidth: totalWidth
+                )
+
+                // 왼쪽 핸들 (시작 시간) - 썸네일 안쪽 왼쪽에 위치
+                TrimHandleView(
+                    handleWidth: handleWidth,
+                    height: geometry.size.height,
+                    offset: startPosition
+                )
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            isDraggingStart = true
+                            let newPosition = max(0, min(value.location.x, endPosition - handleWidth))
+                            let newTime = (newPosition / totalWidth) * duration
+                            onTrimStartChanged(newTime)
+                        }
+                        .onEnded { _ in
+                            isDraggingStart = false
+                        }
+                )
+
+                // 오른쪽 핸들 (종료 시간) - 썸네일 안쪽 오른쪽에 위치
+                TrimHandleView(
+                    handleWidth: handleWidth,
+                    height: geometry.size.height,
+                    offset: endPosition - handleWidth
+                )
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            isDraggingEnd = true
+                            let newPosition = min(totalWidth, max(value.location.x, startPosition + handleWidth))
+                            let newTime = (newPosition / totalWidth) * duration
+                            onTrimEndChanged(newTime)
+                        }
+                        .onEnded { _ in
+                            isDraggingEnd = false
+                        }
+                )
+            }
+        }
+    }
+
+}
+
+// MARK: - Selection Border View
+private struct SelectionBorderView: View {
+    let width: CGFloat
+    let offset: CGFloat
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .stroke(Color.blue, lineWidth: 3)
+            )
+            .frame(width: width)
+            .offset(x: offset)
+    }
+}
+
+// MARK: - Selection Overlay View
+private struct SelectionOverlayView: View {
+    let startPosition: CGFloat
+    let selectionWidth: CGFloat
+    let endPosition: CGFloat
+    let totalWidth: CGFloat
+
+    var body: some View {
+        HStack(spacing: 0) {
+            // 왼쪽 어두운 영역
+            if startPosition > 0 {
+                Rectangle()
+                    .fill(Color.black.opacity(0.5))
+                    .frame(width: startPosition)
+            }
+
+            // 선택 영역 (투명)
+            Rectangle()
+                .fill(Color.clear)
+                .frame(width: selectionWidth)
+
+            // 오른쪽 어두운 영역
+            if endPosition < totalWidth {
+                Rectangle()
+                    .fill(Color.black.opacity(0.5))
+                    .frame(width: totalWidth - endPosition)
+            }
+        }
+    }
+}
+
+// MARK: - Trim Handle View
+private struct TrimHandleView: View {
+    let handleWidth: CGFloat
+    let height: CGFloat
+    let offset: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.blue)
+            .frame(width: handleWidth, height: height)
+            .overlay(
+                // 핸들 그립 라인
+                Rectangle()
+                    .fill(Color.white)
+                    .frame(width: 2, height: 12)
+            )
+            .offset(x: offset)
+    }
+}
+
+// MARK: - Thumbnails View
+private struct ThumbnailsView: View {
+    let videoAsset: PHAsset
+    let duration: Double
+    let thumbnailCount: Int
+    let thumbnailWidth: CGFloat
+    let height: CGFloat
+    let size: CGSize
+
+    @State private var thumbnails: [UIImage] = []
+    @State private var isLoadingThumbnails = false
+
+    var body: some View {
+        ZStack {
+            HStack(spacing: 0) {
+                ForEach(0..<thumbnailCount, id: \.self) { index in
+                    if index < thumbnails.count {
+                        Image(uiImage: thumbnails[index])
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: thumbnailWidth, height: height)
+                            .clipped()
+                    } else {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(width: thumbnailWidth, height: height)
+                    }
+                }
+            }
+            .cornerRadius(4)
+
+            // 로딩 인디케이터
+            if isLoadingThumbnails {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.3))
+                    .cornerRadius(4)
+                    .overlay(
+                        ProgressView()
+                            .tint(.gray)
+                    )
+            }
+        }
+        .onAppear {
+            if duration > 0 && size.width > 0 {
+                loadThumbnails()
+            }
+        }
+        .onChange(of: duration) { _, newDuration in
+            if newDuration > 0 && size.width > 0 {
+                loadThumbnails()
+            }
+        }
+    }
+
+    // MARK: - Thumbnail Loading
+    private func loadThumbnails() {
+        guard duration > 0 else { return }
+
+        // 로딩 시작
+        isLoadingThumbnails = true
+
+        // PHAsset에서 AVAsset 로드
+        let options = PHVideoRequestOptions()
+        options.isNetworkAccessAllowed = true
+        options.deliveryMode = .highQualityFormat
+
+        PHImageManager.default().requestAVAsset(forVideo: videoAsset, options: options) { avAsset, _, _ in
+            guard let avAsset = avAsset else {
+                Task { @MainActor in
+                    self.isLoadingThumbnails = false
+                }
+                return
+            }
+
+            let generator = AVAssetImageGenerator(asset: avAsset)
+            generator.appliesPreferredTrackTransform = true
+            // 디스플레이 스케일을 고려하여 더 높은 해상도로 생성 (3배)
+            let scale: CGFloat = 3.0
+            let thumbnailWidth = (size.width / CGFloat(thumbnailCount)) * scale
+            let thumbnailHeight = size.height * scale
+            generator.maximumSize = CGSize(width: thumbnailWidth, height: thumbnailHeight)
+            // 정확한 프레임 추출을 위한 설정
+            generator.requestedTimeToleranceBefore = .zero
+            generator.requestedTimeToleranceAfter = .zero
+
+            var generatedThumbnails: [UIImage] = []
+            let interval = duration / Double(thumbnailCount)
+
+            for i in 0..<thumbnailCount {
+                let time = CMTime(seconds: interval * Double(i), preferredTimescale: 600)
+
+                if let cgImage = try? generator.copyCGImage(at: time, actualTime: nil) {
+                    let image = UIImage(cgImage: cgImage)
+                    generatedThumbnails.append(image)
+                }
+            }
+
+            Task { @MainActor in
+                self.thumbnails = generatedThumbnails
+                self.isLoadingThumbnails = false
+            }
+        }
+    }
+}
+
+// MARK: - Subtitle Block UIView
+private class SubtitleBlockUIView: UIView {
+    private let handleWidth: CGFloat = 12
+    var subtitle: EditVideoFeature.Subtitle
+    var duration: Double
+    var timelineWidth: CGFloat
+    var pixelsPerSecond: CGFloat
+    var onStartTimeChanged: ((UUID, Double) -> Void)?
+    var onEndTimeChanged: ((UUID, Double) -> Void)?
+    var onRemove: ((UUID) -> Void)?
+
+    private var leftHandle: UIView!
+    private var rightHandle: UIView!
+    private var removeButton: UIButton!
+
+    init(
+        subtitle: EditVideoFeature.Subtitle,
+        duration: Double,
+        timelineWidth: CGFloat,
+        pixelsPerSecond: CGFloat,
+        onStartTimeChanged: @escaping (UUID, Double) -> Void,
+        onEndTimeChanged: @escaping (UUID, Double) -> Void,
+        onRemove: @escaping (UUID) -> Void
+    ) {
+        self.subtitle = subtitle
+        self.duration = duration
+        self.timelineWidth = timelineWidth
+        self.pixelsPerSecond = pixelsPerSecond
+        self.onStartTimeChanged = onStartTimeChanged
+        self.onEndTimeChanged = onEndTimeChanged
+        self.onRemove = onRemove
+
+        super.init(frame: .zero)
+        setupViews()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupViews() {
+        backgroundColor = UIColor.systemBlue.withAlphaComponent(0.6)
+        layer.cornerRadius = 4
+        clipsToBounds = true
+
+        // 왼쪽 핸들 (VideoTimelineTrimmer 스타일)
+        leftHandle = UIView()
+        leftHandle.backgroundColor = UIColor.systemBlue
+        leftHandle.layer.cornerRadius = 4
+        addSubview(leftHandle)
+
+        // 왼쪽 핸들 그립 라인
+        let leftGrip = UIView()
+        leftGrip.backgroundColor = .white
+        leftGrip.layer.cornerRadius = 1
+        leftHandle.addSubview(leftGrip)
+        leftGrip.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            leftGrip.centerXAnchor.constraint(equalTo: leftHandle.centerXAnchor),
+            leftGrip.centerYAnchor.constraint(equalTo: leftHandle.centerYAnchor),
+            leftGrip.widthAnchor.constraint(equalToConstant: 2),
+            leftGrip.heightAnchor.constraint(equalToConstant: 12)
+        ])
+
+        let leftPan = UIPanGestureRecognizer(target: self, action: #selector(handleLeftPan(_:)))
+        leftHandle.addGestureRecognizer(leftPan)
+        leftHandle.isUserInteractionEnabled = true
+
+        // 오른쪽 핸들 (VideoTimelineTrimmer 스타일)
+        rightHandle = UIView()
+        rightHandle.backgroundColor = UIColor.systemBlue
+        rightHandle.layer.cornerRadius = 4
+        addSubview(rightHandle)
+
+        // 오른쪽 핸들 그립 라인
+        let rightGrip = UIView()
+        rightGrip.backgroundColor = .white
+        rightGrip.layer.cornerRadius = 1
+        rightHandle.addSubview(rightGrip)
+        rightGrip.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            rightGrip.centerXAnchor.constraint(equalTo: rightHandle.centerXAnchor),
+            rightGrip.centerYAnchor.constraint(equalTo: rightHandle.centerYAnchor),
+            rightGrip.widthAnchor.constraint(equalToConstant: 2),
+            rightGrip.heightAnchor.constraint(equalToConstant: 12)
+        ])
+
+        let rightPan = UIPanGestureRecognizer(target: self, action: #selector(handleRightPan(_:)))
+        rightHandle.addGestureRecognizer(rightPan)
+        rightHandle.isUserInteractionEnabled = true
+
+        // 제거 버튼
+        removeButton = UIButton(type: .custom)
+        removeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+        removeButton.tintColor = .white
+        removeButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        removeButton.layer.cornerRadius = 8
+        removeButton.addTarget(self, action: #selector(handleRemove), for: .touchUpInside)
+        addSubview(removeButton)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+
+        // 왼쪽 핸들
+        leftHandle.frame = CGRect(x: 0, y: 0, width: handleWidth, height: bounds.height)
+
+        // 오른쪽 핸들
+        rightHandle.frame = CGRect(x: bounds.width - handleWidth, y: 0, width: handleWidth, height: bounds.height)
+
+        // 제거 버튼
+        removeButton.frame = CGRect(x: bounds.width - 20, y: 4, width: 16, height: 16)
+    }
+
+    func updatePosition() {
+        // 프레임 업데이트 (외부에서 호출)
+        let startPosition = duration > 0 ? (subtitle.startTime / duration) * timelineWidth : 0
+        let endPosition = duration > 0 ? (subtitle.endTime / duration) * timelineWidth : 0
+        let blockWidth = max(endPosition - startPosition, 20)
+
+        self.frame = CGRect(x: startPosition, y: self.frame.origin.y, width: blockWidth, height: self.frame.height)
+    }
+
+    @objc private func handleLeftPan(_ gesture: UIPanGestureRecognizer) {
+        guard let superview = superview else { return }
+
+        if gesture.state == .changed {
+            // superview 내에서의 터치 위치
+            let location = gesture.location(in: superview)
+
+            // 새로운 시작 위치
+            let newStartPosition = max(0, location.x)
+
+            // 끝 위치 계산
+            let endPosition = (subtitle.endTime / duration) * timelineWidth
+
+            // 최소 너비 유지 (0.5초에 해당하는 픽셀)
+            let minWidth = (0.5 / duration) * timelineWidth
+            let clampedPosition = min(newStartPosition, endPosition - minWidth)
+
+            // 시간으로 변환
+            let newStartTime = (clampedPosition / timelineWidth) * duration
+            let clampedTime = max(0, min(newStartTime, subtitle.endTime - 0.5))
+
+            // 즉시 프레임 업데이트 (드래그 중에는 애니메이션 없음)
+            let blockWidth = endPosition - clampedPosition
+            self.frame = CGRect(x: clampedPosition, y: self.frame.origin.y, width: blockWidth, height: self.frame.height)
+
+            // 상태 업데이트 콜백
+            onStartTimeChanged?(subtitle.id, clampedTime)
+        }
+    }
+
+    @objc private func handleRightPan(_ gesture: UIPanGestureRecognizer) {
+        guard let superview = superview else { return }
+
+        if gesture.state == .changed {
+            // superview 내에서의 터치 위치
+            let location = gesture.location(in: superview)
+
+            // 새로운 끝 위치
+            let newEndPosition = min(timelineWidth, location.x)
+
+            // 시작 위치 계산
+            let startPosition = (subtitle.startTime / duration) * timelineWidth
+
+            // 최소 너비 유지 (0.5초에 해당하는 픽셀)
+            let minWidth = (0.5 / duration) * timelineWidth
+            let clampedPosition = max(newEndPosition, startPosition + minWidth)
+
+            // 시간으로 변환
+            let newEndTime = (clampedPosition / timelineWidth) * duration
+            let clampedTime = min(duration, max(newEndTime, subtitle.startTime + 0.5))
+
+            // 즉시 프레임 업데이트 (드래그 중에는 애니메이션 없음)
+            let blockWidth = clampedPosition - startPosition
+            self.frame = CGRect(x: startPosition, y: self.frame.origin.y, width: blockWidth, height: self.frame.height)
+
+            // 상태 업데이트 콜백
+            onEndTimeChanged?(subtitle.id, clampedTime)
+        }
+    }
+
+    @objc private func handleRemove() {
+        onRemove?(subtitle.id)
+    }
+}
+
 // MARK: - Subtitle Block View
 private struct SubtitleBlockView: View {
     let subtitle: EditVideoFeature.Subtitle
@@ -1231,5 +1417,83 @@ private struct SubtitleBlockView: View {
                 .cornerRadius(4)
         }
         .offset(x: startPosition)
+    }
+}
+
+// MARK: - Filter Selection View
+private struct FilterSelectionView: View {
+    let selectedFilter: VideoFilter?
+    let onFilterSelected: (VideoFilter) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: AppPadding.medium) {
+                ForEach(VideoFilter.allCases, id: \.self) { filter in
+                    FilterButton(
+                        filter: filter,
+                        isSelected: selectedFilter == filter,
+                        action: {
+                            onFilterSelected(filter)
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Filter Button
+private struct FilterButton: View {
+    let filter: VideoFilter
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                // 필터 미리보기 (TODO: 나중에 실제 필터 적용된 썸네일로 변경)
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.gray.opacity(0.3))
+                    .frame(width: 80, height: 80)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+                    )
+
+                // 필터 이름
+                Text(filter.displayName)
+                    .font(.appCaption)
+                    .foregroundStyle(isSelected ? .blue : .black)
+            }
+        }
+    }
+}
+
+// MARK: - Exporting Overlay View
+private struct ExportingOverlayView: View {
+    let progress: Double
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+
+            VStack(spacing: AppPadding.large) {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(.white)
+
+                Text("영상 내보내는 중...")
+                    .font(.appSubTitle)
+                    .foregroundStyle(.white)
+
+                Text("\(Int(progress * 100))%")
+                    .font(.appBody)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            .padding(AppPadding.large * 2)
+            .background(Color.black.opacity(0.8))
+            .cornerRadius(12)
+        }
     }
 }
