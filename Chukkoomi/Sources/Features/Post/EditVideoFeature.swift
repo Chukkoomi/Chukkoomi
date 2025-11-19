@@ -36,6 +36,9 @@ struct EditVideoFeature {
         var isExporting: Bool = false
         var exportProgress: Double = 0.0
 
+        // Alert
+        @Presents var alert: AlertState<Action.Alert>?
+
         init(videoAsset: PHAsset) {
             self.videoAsset = videoAsset
         }
@@ -94,6 +97,13 @@ struct EditVideoFeature {
         case removeSubtitle(UUID)
         case updateSubtitleStartTime(UUID, Double)
         case updateSubtitleEndTime(UUID, Double)
+
+        // Alert
+        case alert(PresentationAction<Alert>)
+
+        enum Alert: Equatable {
+            case confirmSubtitleOverlapError
+        }
 
         // Delegate
         case delegate(Delegate)
@@ -254,9 +264,52 @@ struct EditVideoFeature {
                 return .none
 
             case .addSubtitle:
-                // 현재 playhead 위치에서 5초 자막 추가
+                // 현재 playhead 위치에서 자막 추가
                 let startTime = state.currentTime
-                let endTime = min(startTime + 5.0, state.duration)
+
+                // 현재 위치가 기존 자막 블럭 안에 있는지 확인
+                let isInsideExistingSubtitle = state.editState.subtitles.contains { subtitle in
+                    startTime >= subtitle.startTime && startTime < subtitle.endTime
+                }
+
+                if isInsideExistingSubtitle {
+                    state.alert = AlertState {
+                        TextState("자막 추가 불가")
+                    } actions: {
+                        ButtonState(action: .confirmSubtitleOverlapError) {
+                            TextState("확인")
+                        }
+                    } message: {
+                        TextState("해당 위치에 이미 자막이 존재합니다.")
+                    }
+                    return .none
+                }
+
+                var endTime = min(startTime + 5.0, state.duration)
+
+                // 겹치지 않는 영역 찾기
+                let availableEndTime = findAvailableEndTime(
+                    startTime: startTime,
+                    desiredEndTime: endTime,
+                    existingSubtitles: state.editState.subtitles
+                )
+
+                endTime = availableEndTime
+
+                // 최소 0.5초 확보 안되면 에러
+                if endTime - startTime < 0.5 {
+                    state.alert = AlertState {
+                        TextState("자막 추가 불가")
+                    } actions: {
+                        ButtonState(action: .confirmSubtitleOverlapError) {
+                            TextState("확인")
+                        }
+                    } message: {
+                        TextState("해당 위치에 자막을 추가할 공간이 부족합니다. (최소 0.5초 필요)")
+                    }
+                    return .none
+                }
+
                 let newSubtitle = Subtitle(startTime: startTime, endTime: endTime)
                 state.editState.subtitles.append(newSubtitle)
                 // 시작 시간 기준으로 정렬
@@ -273,8 +326,21 @@ struct EditVideoFeature {
                 // 자막 시작 시간 업데이트
                 if let index = state.editState.subtitles.firstIndex(where: { $0.id == id }) {
                     let endTime = state.editState.subtitles[index].endTime
-                    let clampedTime = max(0, min(time, endTime - 0.5)) // 최소 0.5초 길이 유지
-                    state.editState.subtitles[index].startTime = clampedTime
+                    var clampedTime = max(0, min(time, endTime - 0.5)) // 최소 0.5초 길이 유지
+
+                    // 왼쪽 인접 자막과 겹치지 않도록
+                    let otherSubtitles = state.editState.subtitles.filter { $0.id != id }
+                    for other in otherSubtitles {
+                        // 왼쪽에 있는 자막과 겹침 방지
+                        if other.endTime > clampedTime && other.startTime < clampedTime {
+                            clampedTime = max(clampedTime, other.endTime)
+                        }
+                    }
+
+                    // 최소 길이 확보 검증
+                    if endTime - clampedTime >= 0.5 {
+                        state.editState.subtitles[index].startTime = clampedTime
+                    }
                 }
                 return .none
 
@@ -282,15 +348,51 @@ struct EditVideoFeature {
                 // 자막 종료 시간 업데이트
                 if let index = state.editState.subtitles.firstIndex(where: { $0.id == id }) {
                     let startTime = state.editState.subtitles[index].startTime
-                    let clampedTime = min(state.duration, max(time, startTime + 0.5)) // 최소 0.5초 길이 유지
-                    state.editState.subtitles[index].endTime = clampedTime
+                    var clampedTime = min(state.duration, max(time, startTime + 0.5)) // 최소 0.5초 길이 유지
+
+                    // 오른쪽 인접 자막과 겹치지 않도록
+                    let otherSubtitles = state.editState.subtitles.filter { $0.id != id }
+                    for other in otherSubtitles {
+                        // 오른쪽에 있는 자막과 겹침 방지
+                        if other.startTime < clampedTime && other.endTime > clampedTime {
+                            clampedTime = min(clampedTime, other.startTime)
+                        }
+                    }
+
+                    // 최소 길이 확보 검증
+                    if clampedTime - startTime >= 0.5 {
+                        state.editState.subtitles[index].endTime = clampedTime
+                    }
                 }
+                return .none
+
+            case .alert:
                 return .none
 
             case .delegate:
                 return .none
             }
         }
+        .ifLet(\.$alert, action: \.alert)
+    }
+
+    // MARK: - Helper Functions
+    private func findAvailableEndTime(
+        startTime: Double,
+        desiredEndTime: Double,
+        existingSubtitles: [Subtitle]
+    ) -> Double {
+        // startTime 이후에 있는 자막들 중 가장 가까운 자막 찾기
+        let nextSubtitles = existingSubtitles
+            .filter { $0.startTime >= startTime }
+            .sorted { $0.startTime < $1.startTime }
+
+        if let nextSubtitle = nextSubtitles.first {
+            // 다음 자막과 겹치지 않도록 endTime 조정
+            return min(desiredEndTime, nextSubtitle.startTime)
+        }
+
+        return desiredEndTime
     }
 }
 

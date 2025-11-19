@@ -111,6 +111,7 @@ struct EditVideoView: View {
                     ExportingOverlayView(progress: viewStore.exportProgress)
                 }
             }
+            .alert(store: store.scope(state: \.$alert, action: \.alert))
         }
     }
 }
@@ -1169,7 +1170,7 @@ private struct ThumbnailsView: View {
                             .clipped()
                     } else {
                         Rectangle()
-                            .fill(Color.gray.opacity(0.3))
+                            .fill(Color(uiColor: UIColor.systemGray6))
                             .frame(width: thumbnailWidth, height: height)
                     }
                 }
