@@ -362,41 +362,30 @@ struct ChatView: View {
             var imageData: [Data] = []
             var videoData: [Data] = []
 
-            print("📸 사진/영상 선택 처리 시작: \(itemsToProcess.count)개 아이템")
 
             for (index, item) in itemsToProcess.enumerated() {
                 // 영상인지 이미지인지 확인
                 let isVideo = item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) })
-                print("📸 아이템 \(index + 1): isVideo = \(isVideo), contentTypes = \(item.supportedContentTypes)")
 
                 if isVideo {
                     // 영상은 URL로 로드 후 Data로 변환
-                    print("🎬 영상 로드 시작...")
                     if let movie = try? await item.loadTransferable(type: Movie.self) {
-                        print("🎬 영상 URL 획득: \(movie.url)")
                         let data = try? Data(contentsOf: movie.url)
                         if let data = data {
-                            print("🎬 영상 Data 변환 성공: \(data.count) bytes")
                             videoData.append(data)
                         } else {
-                            print("❌ 영상 Data 변환 실패")
                         }
                     } else {
-                        print("❌ 영상 로드 실패")
                     }
                 } else {
                     // 이미지는 Data로 직접 로드
-                    print("🖼️ 이미지 로드 시작...")
                     if let data = try? await item.loadTransferable(type: Data.self) {
-                        print("🖼️ 이미지 로드 성공: \(data.count) bytes")
                         imageData.append(data)
                     } else {
-                        print("❌ 이미지 로드 실패")
                     }
                 }
             }
 
-            print("📸 로드 완료 - 이미지: \(imageData.count)개, 영상: \(videoData.count)개")
 
             // 메인 스레드에서 상태 업데이트
             await MainActor.run {
@@ -408,7 +397,6 @@ struct ChatView: View {
                 if index > 0 {
                     try? await Task.sleep(nanoseconds: 300_000_000) // 0.3초 간격
                 }
-                print("🎬 영상 \(index + 1) 전송 시작: \(video.count) bytes")
                 _ = await MainActor.run {
                     viewStore.send(.uploadAndSendFiles([video]))
                 }
@@ -416,7 +404,6 @@ struct ChatView: View {
 
             // 이미지는 한 번에 묶어서 전송
             if !imageData.isEmpty {
-                print("🖼️ 이미지 \(imageData.count)개 전송 시작")
                 _ = await MainActor.run {
                     viewStore.send(.uploadAndSendFiles(imageData))
                 }

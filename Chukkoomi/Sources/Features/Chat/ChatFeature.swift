@@ -76,7 +76,6 @@ struct ChatFeature: Reducer {
                             send(.loadMessages)
                         }
                     } catch {
-                        print("Realm 메시지 로드 실패: \(error)")
                         // Realm 실패 시 HTTP로 직접 로드
                         Task {
                             send(.loadMessages)
@@ -150,7 +149,7 @@ struct ChatFeature: Reducer {
                             }
                         }
                     } catch {
-                        print("Realm 메시지 저장 실패: \(error)")
+                        // Realm 저장 실패
                     }
                 }
             }
@@ -247,7 +246,7 @@ struct ChatFeature: Reducer {
                             realm.add(messageDTO, update: .modified)
                         }
                     } catch {
-                        print("Realm 메시지 저장 실패: \(error)")
+                        // Realm 저장 실패
                     }
                 }
             }
@@ -281,12 +280,10 @@ struct ChatFeature: Reducer {
             return .none
 
         case .uploadAndSendFiles(let filesData):
-            print("📤 uploadAndSendFiles 액션 수신: \(filesData.count)개 파일, 총 \(filesData.reduce(0) { $0 + $1.count }) bytes")
             state.isUploadingFiles = true
 
             // 로컬 임시 메시지 생성 (낙관적 업데이트)
             let localId = UUID().uuidString
-            print("📤 임시 메시지 생성: localId = \(localId)")
             let tempMessage = ChatMessage(
                 chatId: "",
                 roomId: state.chatRoom?.roomId ?? "",
@@ -303,14 +300,12 @@ struct ChatFeature: Reducer {
                 localImages: filesData  // 로컬 이미지 Data 저장
             )
             state.messages.append(tempMessage)
-            print("📤 임시 메시지 추가됨: 전체 메시지 수 = \(state.messages.count)")
 
             // 파일 Data 저장 (재전송 시 사용)
             state.pendingFileUploads[localId] = filesData
 
             // 채팅방이 아직 생성되지 않은 경우 (첫 메시지)
             if state.chatRoom == nil {
-                print("⚠️ 채팅방이 없음. 채팅방 생성 먼저 진행")
                 return .run { [opponentId = state.opponent.userId] send in
                     do {
                         // 1. 채팅방 생성
@@ -332,7 +327,6 @@ struct ChatFeature: Reducer {
             return .merge(
                 // 실제 파일 업로드
                 .run { [roomId = state.chatRoom!.roomId] send in
-                    print("📤 파일 업로드 시작: roomId = \(roomId)")
                     do {
                         // Data를 MultipartFile 배열로 변환
                         let multipartFiles = filesData.enumerated().map { index, data in
@@ -344,29 +338,23 @@ struct ChatFeature: Reducer {
                             if isVideo {
                                 fileName = "video_\(index)_\(UUID().uuidString).mp4"
                                 mimeType = "video/mp4"
-                                print("📤 영상 파일 감지: \(fileName)")
                             } else {
                                 fileName = "image_\(index)_\(UUID().uuidString).jpg"
                                 mimeType = "image/jpeg"
-                                print("📤 이미지 파일 감지: \(fileName)")
                             }
 
                             return MultipartFile(data: data, fileName: fileName, mimeType: mimeType)
                         }
 
                         // 파일 업로드 (ChatRouter 사용)
-                        print("📤 서버에 파일 업로드 요청 중...")
                         let response = try await NetworkManager.shared.performRequest(
                             ChatRouter.uploadFiles(roomId: roomId, files: multipartFiles),
                             as: UploadFileResponseDTO.self
                         )
 
-                        print("✅ 파일 업로드 성공: \(response.files.count)개 파일")
-                        print("✅ 파일 URLs: \(response.files)")
                         // 업로드된 파일 URL로 메시지 전송
                         await send(.filesUploaded(response.files, localId: localId))
                     } catch {
-                        print("❌ 파일 업로드 실패: \(error.localizedDescription)")
                         await send(.fileUploadFailed(error.localizedDescription, localId: localId))
                     }
                 }
@@ -381,15 +369,12 @@ struct ChatFeature: Reducer {
             )
 
         case .filesUploaded(let fileUrls, let localId):
-            print("✅ filesUploaded 액션 수신: \(fileUrls.count)개 파일, localId = \(localId)")
             state.isUploadingFiles = false
 
             // 파일 URL로 메시지 전송
             guard let roomId = state.chatRoom?.roomId else {
-                print("⚠️ roomId가 없음")
                 return .none
             }
-            print("✅ 메시지 전송 시작: roomId = \(roomId)")
 
             // 타임아웃 취소
             return .merge(
@@ -409,13 +394,11 @@ struct ChatFeature: Reducer {
             )
 
         case .fileUploadFailed(let error, let localId):
-            print("❌ fileUploadFailed 액션 수신: error = \(error), localId = \(String(describing: localId))")
             state.isUploadingFiles = false
 
             // localId로 메시지를 찾아서 상태를 .failed로 변경
             if let localId = localId,
                let index = state.messages.firstIndex(where: { $0.localId == localId }) {
-                print("❌ 메시지 상태를 failed로 변경: index = \(index)")
                 var failedMessage = state.messages[index]
                 failedMessage.sendStatus = .failed
                 state.messages[index] = failedMessage
