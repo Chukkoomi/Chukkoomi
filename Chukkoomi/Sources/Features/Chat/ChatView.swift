@@ -594,8 +594,20 @@ struct MessageRow: View {
             switch count {
             case 1:
                 // 1개: 단일 이미지/영상
-                mediaView(filePath: files[0], width: 260, height: 260)
+                if MediaTypeHelper.isVideoPath(files[0]) {
+                    ChatVideoPlayerView(
+                        mediaPath: files[0],
+                        maxWidth: 260
+                    )
                     .cornerRadius(8)
+                } else {
+                    AsyncMediaImageView(
+                        imagePath: files[0],
+                        width: 200,
+                        height: 200
+                    )
+                    .cornerRadius(8)
+                }
 
             case 2:
                 // 2개: 한 줄에 표시
@@ -658,8 +670,20 @@ struct MessageRow: View {
             default:
                 // 그 외: 기본 처리 (1개씩 표시)
                 ForEach(files, id: \.self) { filePath in
-                    mediaView(filePath: filePath, width: 260, height: 260)
+                    if MediaTypeHelper.isVideoPath(filePath) {
+                        ChatVideoPlayerView(
+                            mediaPath: filePath,
+                            maxWidth: 260
+                        )
                         .cornerRadius(8)
+                    } else {
+                        AsyncMediaImageView(
+                            imagePath: filePath,
+                            width: 200,
+                            height: 200
+                        )
+                        .cornerRadius(8)
+                    }
                 }
             }
         }
