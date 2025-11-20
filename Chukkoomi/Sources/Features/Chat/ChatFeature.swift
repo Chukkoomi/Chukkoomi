@@ -440,11 +440,51 @@ struct ChatFeature: Reducer {
 
             // 파일 업로드가 실패한 경우 (pendingFileUploads에 Data가 있음)
             if let filesData = state.pendingFileUploads[localId] {
-                return .run { send in
-                    await send(.uploadAndSendFiles(filesData))
-                    // 기존 실패 메시지 삭제
-                    await send(.cancelMessage(localId: localId))
-                }
+                state.isUploadingFiles = true
+
+                return .merge(
+                    // 실제 파일 업로드
+                    .run { send in
+                        do {
+                            // Data를 MultipartFile 배열로 변환
+                            let multipartFiles = filesData.enumerated().map { index, data in
+                                // 파일 타입 감지 (이미지 vs 영상)
+                                let isVideo = isVideoData(data)
+                                let fileName: String
+                                let mimeType: String
+
+                                if isVideo {
+                                    fileName = "video_\(index)_\(UUID().uuidString).mp4"
+                                    mimeType = "video/mp4"
+                                } else {
+                                    fileName = "image_\(index)_\(UUID().uuidString).jpg"
+                                    mimeType = "image/jpeg"
+                                }
+
+                                return MultipartFile(data: data, fileName: fileName, mimeType: mimeType)
+                            }
+
+                            // 파일 업로드 (ChatRouter 사용)
+                            let response = try await NetworkManager.shared.performRequest(
+                                ChatRouter.uploadFiles(roomId: roomId, files: multipartFiles),
+                                as: UploadFileResponseDTO.self
+                            )
+
+                            // 업로드된 파일 URL로 메시지 전송
+                            await send(.filesUploaded(response.files, localId: localId))
+                        } catch {
+                            await send(.fileUploadFailed(error.localizedDescription, localId: localId))
+                        }
+                    }
+                    .cancellable(id: localId, cancelInFlight: true),
+
+                    // 5초 타임아웃
+                    .run { send in
+                        try await Task.sleep(nanoseconds: 5_000_000_000)
+                        await send(.uploadTimeout(localId: localId))
+                    }
+                    .cancellable(id: "\(localId)-timeout", cancelInFlight: true)
+                )
             }
 
             // 텍스트 메시지 재전송

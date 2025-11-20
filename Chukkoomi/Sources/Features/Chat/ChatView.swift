@@ -457,40 +457,44 @@ struct MessageRow: View {
 
                 HStack(alignment: .bottom, spacing: 8) {
                     // 내 메시지: 시간이 왼쪽 (실패 시 재전송/취소 버튼)
-                    if showTime {
-                        if message.sendStatus == .failed {
-                            // 실패 시 재전송/취소 버튼
-                            HStack(spacing: 0) {
-                                Button(action: {
-                                    if let localId = message.localId {
-                                        onRetry?(localId)
-                                    }
-                                }) {
-                                    Image(systemName: "arrow.clockwise")
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundColor(Color(red: 0.4, green: 0.4, blue: 0.4))
-                                        .frame(width: 24, height: 24)
+                    if message.sendStatus == .failed {
+                        // 실패 시 재전송/취소 버튼 (항상 표시)
+                        HStack(spacing: 0) {
+                            Button(action: {
+                                if let localId = message.localId {
+                                    onRetry?(localId)
                                 }
-
-                                Button(action: {
-                                    if let localId = message.localId {
-                                        onCancel?(localId)
-                                    }
-                                }) {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundColor(.red)
-                                        .frame(width: 24, height: 24)
-                                }
+                            }) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(Color(red: 0.4, green: 0.4, blue: 0.4))
+                                    .frame(width: 24, height: 24)
+                                    .contentShape(Rectangle())
                             }
-                            .background(Color(red: 0.95, green: 0.95, blue: 0.95))
-                            .cornerRadius(6)
-                        } else {
-                            Text(DateFormatters.formatChatMessageTime(message.createdAt))
-                                .font(.system(size: 11))
-                                .foregroundColor(.gray)
-                                .fixedSize()
+                            .buttonStyle(.plain)
+
+                            Button(action: {
+                                if let localId = message.localId {
+                                    onCancel?(localId)
+                                }
+                            }) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.red)
+                                    .frame(width: 24, height: 24)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
+                        .background(Color(red: 0.95, green: 0.95, blue: 0.95))
+                        .cornerRadius(6)
+                        .zIndex(100)
+                    } else if showTime {
+                        // 성공 시 시간 표시
+                        Text(DateFormatters.formatChatMessageTime(message.createdAt))
+                            .font(.system(size: 11))
+                            .foregroundColor(.gray)
+                            .fixedSize()
                     }
 
                     messageContent
@@ -692,26 +696,38 @@ struct MessageRow: View {
     // 로컬 이미지/영상 그리드 레이아웃 (업로드 중)
     @ViewBuilder
     private func localImageGridView(imagesData: [Data]) -> some View {
-        let count = imagesData.count
+        LocalMediaGridView(imagesData: imagesData)
+    }
+}
 
-        // 영상 플레이스홀더 이미지 (업로드 중 표시용)
-        let videoPlaceholder = UIImage(systemName: "video.fill")
+// MARK: - 로컬 미디어 그리드 뷰 (업로드 중/실패 시)
+struct LocalMediaGridView: View {
+    let imagesData: [Data]
+    @State private var thumbnails: [UIImage?] = []
 
-        // 이미지는 직접 변환, 영상은 플레이스홀더 사용
-        let images: [UIImage] = imagesData.compactMap { data in
-            // 먼저 이미지로 변환 시도
-            if let image = UIImage(data: data) {
-                return image
+    var body: some View {
+        Group {
+            if thumbnails.isEmpty {
+                // 썸네일 로딩 중
+                ProgressView()
+                    .frame(width: 200, height: 200)
+            } else {
+                gridContent
             }
-            // 이미지 변환 실패 시 (영상일 경우) 플레이스홀더 반환
-            return videoPlaceholder
         }
+        .task {
+            await loadThumbnails()
+        }
+    }
+
+    @ViewBuilder
+    private var gridContent: some View {
+        let count = thumbnails.count
 
         Group {
             switch count {
             case 1:
-                // 1개: 단일 이미지/영상
-                if let image = images.first {
+                if let thumbnail = thumbnails.first, let image = thumbnail {
                     ZStack {
                         Image(uiImage: image)
                             .resizable()
@@ -719,9 +735,8 @@ struct MessageRow: View {
                             .frame(width: 200, height: 200)
                             .clipped()
                             .cornerRadius(8)
-                            .opacity(0.7)  // 업로드 중 표시
+                            .opacity(0.7)
 
-                        // 업로드 중 스피너
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             .scaleEffect(1.5)
@@ -729,25 +744,25 @@ struct MessageRow: View {
                 }
 
             case 2:
-                // 2개: 한 줄에 표시
                 HStack(spacing: 2) {
-                    ForEach(Array(images.enumerated()), id: \.offset) { index, image in
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 98, height: 98)
-                            .clipped()
-                            .cornerRadius(6)
-                            .opacity(0.7)
+                    ForEach(Array(thumbnails.enumerated()), id: \.offset) { index, thumbnail in
+                        if let image = thumbnail {
+                            Image(uiImage: image)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 98, height: 98)
+                                .clipped()
+                                .cornerRadius(6)
+                                .opacity(0.7)
+                        }
                     }
                 }
 
             case 3:
-                // 3개: 윗줄 2개, 아랫줄 1개
                 VStack(spacing: 2) {
                     HStack(spacing: 2) {
-                        if images.count > 0 {
-                            Image(uiImage: images[0])
+                        if thumbnails.count > 0, let image = thumbnails[0] {
+                            Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 98, height: 98)
@@ -755,8 +770,8 @@ struct MessageRow: View {
                                 .cornerRadius(6)
                                 .opacity(0.7)
                         }
-                        if images.count > 1 {
-                            Image(uiImage: images[1])
+                        if thumbnails.count > 1, let image = thumbnails[1] {
+                            Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 98, height: 98)
@@ -765,8 +780,8 @@ struct MessageRow: View {
                                 .opacity(0.7)
                         }
                     }
-                    if images.count > 2 {
-                        Image(uiImage: images[2])
+                    if thumbnails.count > 2, let image = thumbnails[2] {
+                        Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
                             .frame(width: 198, height: 98)
@@ -777,11 +792,10 @@ struct MessageRow: View {
                 }
 
             case 4:
-                // 4개: 2x2 그리드
                 VStack(spacing: 2) {
                     HStack(spacing: 2) {
-                        if images.count > 0 {
-                            Image(uiImage: images[0])
+                        if thumbnails.count > 0, let image = thumbnails[0] {
+                            Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 98, height: 98)
@@ -789,8 +803,8 @@ struct MessageRow: View {
                                 .cornerRadius(6)
                                 .opacity(0.7)
                         }
-                        if images.count > 1 {
-                            Image(uiImage: images[1])
+                        if thumbnails.count > 1, let image = thumbnails[1] {
+                            Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 98, height: 98)
@@ -800,8 +814,8 @@ struct MessageRow: View {
                         }
                     }
                     HStack(spacing: 2) {
-                        if images.count > 2 {
-                            Image(uiImage: images[2])
+                        if thumbnails.count > 2, let image = thumbnails[2] {
+                            Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 98, height: 98)
@@ -809,8 +823,8 @@ struct MessageRow: View {
                                 .cornerRadius(6)
                                 .opacity(0.7)
                         }
-                        if images.count > 3 {
-                            Image(uiImage: images[3])
+                        if thumbnails.count > 3, let image = thumbnails[3] {
+                            Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 98, height: 98)
@@ -822,11 +836,10 @@ struct MessageRow: View {
                 }
 
             case 5:
-                // 5개: 윗줄 2개, 아랫줄 3개
                 VStack(spacing: 2) {
                     HStack(spacing: 2) {
-                        if images.count > 0 {
-                            Image(uiImage: images[0])
+                        if thumbnails.count > 0, let image = thumbnails[0] {
+                            Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 98, height: 98)
@@ -834,8 +847,8 @@ struct MessageRow: View {
                                 .cornerRadius(6)
                                 .opacity(0.7)
                         }
-                        if images.count > 1 {
-                            Image(uiImage: images[1])
+                        if thumbnails.count > 1, let image = thumbnails[1] {
+                            Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 98, height: 98)
@@ -845,8 +858,8 @@ struct MessageRow: View {
                         }
                     }
                     HStack(spacing: 2) {
-                        if images.count > 2 {
-                            Image(uiImage: images[2])
+                        if thumbnails.count > 2, let image = thumbnails[2] {
+                            Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 64, height: 64)
@@ -854,8 +867,8 @@ struct MessageRow: View {
                                 .cornerRadius(6)
                                 .opacity(0.7)
                         }
-                        if images.count > 3 {
-                            Image(uiImage: images[3])
+                        if thumbnails.count > 3, let image = thumbnails[3] {
+                            Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 64, height: 64)
@@ -863,8 +876,8 @@ struct MessageRow: View {
                                 .cornerRadius(6)
                                 .opacity(0.7)
                         }
-                        if images.count > 4 {
-                            Image(uiImage: images[4])
+                        if thumbnails.count > 4, let image = thumbnails[4] {
+                            Image(uiImage: image)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: 64, height: 64)
@@ -876,17 +889,42 @@ struct MessageRow: View {
                 }
 
             default:
-                // 그 외: 기본 처리
-                ForEach(Array(images.enumerated()), id: \.offset) { index, image in
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 200, height: 200)
-                        .clipped()
-                        .cornerRadius(8)
-                        .opacity(0.7)
+                ForEach(Array(thumbnails.enumerated()), id: \.offset) { index, thumbnail in
+                    if let image = thumbnail {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 200, height: 200)
+                            .clipped()
+                            .cornerRadius(8)
+                            .opacity(0.7)
+                    }
                 }
             }
+        }
+    }
+
+    private func loadThumbnails() async {
+        var results: [UIImage?] = []
+
+        for data in imagesData {
+            // 먼저 이미지로 변환 시도
+            if let image = UIImage(data: data) {
+                results.append(image)
+            } else {
+                // 이미지 변환 실패 시 영상 썸네일 추출
+                if let thumbnail = await VideoThumbnailHelper.generateThumbnail(from: data),
+                   let thumbnailImage = UIImage(data: thumbnail) {
+                    results.append(thumbnailImage)
+                } else {
+                    // 썸네일 추출 실패 시 플레이스홀더
+                    results.append(UIImage(systemName: "video.fill"))
+                }
+            }
+        }
+
+        await MainActor.run {
+            self.thumbnails = results
         }
     }
 }
