@@ -5,10 +5,8 @@
 //  Created by 김영훈 on 11/15/25.
 //
 
-import UIKit
 import Photos
 import AVFoundation
-import CoreText
 
 /// 비디오 편집을 적용하고 최종 영상을 내보냄
 struct VideoExporter {
@@ -83,14 +81,13 @@ struct VideoExporter {
 
         if !editState.subtitles.isEmpty {
             // 자막이 있으면: 커스텀 compositor가 필터와 자막을 함께 처리
-            videoComposition = try await applySubtitles(
-                to: trimmedAsset,
-                editState: editState,
-                baseVideoComposition: nil
-            )
+            videoComposition = try await applySubtitles(to: trimmedAsset, editState: editState)
         } else if editState.selectedFilter != nil {
-            // 자막이 없고 필터만 있으면: 필터만 적용
-            videoComposition = try await applyFilter(to: trimmedAsset, filterType: editState.selectedFilter)
+            // 자막이 없고 필터만 있으면: VideoFilterManager로 필터만 적용
+            videoComposition = await VideoFilterManager.createVideoComposition(
+                for: trimmedAsset,
+                filter: editState.selectedFilter
+            )
         } else {
             // 필터도 자막도 없으면: nil
             videoComposition = nil
@@ -149,27 +146,12 @@ struct VideoExporter {
         return composition
     }
 
-    private func applyFilter(
-        to asset: AVAsset,
-        filterType: VideoFilter?
-    ) async throws -> AVVideoComposition? {
-        return await VideoFilterManager.createVideoComposition(
-            for: asset,
-            filter: filterType
-        )
-    }
-
     private func applySubtitles(
         to asset: AVAsset,
-        editState: EditVideoFeature.EditState,
-        baseVideoComposition: AVVideoComposition?
+        editState: EditVideoFeature.EditState
     ) async throws -> AVVideoComposition {
         // 비디오 트랙 가져오기
         guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
-            // 비디오 트랙이 없으면 기본 composition 반환
-            if let baseComposition = baseVideoComposition {
-                return baseComposition
-            }
             throw ExportError.failedToLoadAsset
         }
 

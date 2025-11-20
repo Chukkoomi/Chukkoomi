@@ -2,7 +2,7 @@
 //  VideoCompositorWithSubtitles.swift
 //  Chukkoomi
 //
-//  Created by Claude on 11/20/25.
+//  Created by 김영훈 on 11/20/25.
 //
 
 import AVFoundation
@@ -163,61 +163,13 @@ final class VideoCompositorWithSubtitles: NSObject, AVVideoCompositing {
 
     // MARK: - Private Helper Methods
 
-    /// 필터 적용
+    /// 필터 적용 (VideoFilterHelper 사용)
     private func applyFilter(_ filter: VideoFilter, to image: CIImage) -> CIImage {
-        switch filter {
-        case .blackAndWhite:
-            return applyBlackAndWhiteFilter(to: image)
-        case .warm:
-            return applyWarmFilter(to: image)
-        case .cool:
-            return applyCoolFilter(to: image)
-        case .animeGANHayao:
-            // AnimeGAN은 너무 무거워서 실시간 처리 불가
-            // 사전 처리된 비디오를 사용해야 함
+        // AnimeGAN은 너무 무거워서 실시간 처리 불가 - 커스텀 compositor에서는 스킵
+        if filter == .animeGANHayao {
             return image
         }
-    }
-
-    /// 흑백 필터
-    private func applyBlackAndWhiteFilter(to image: CIImage) -> CIImage {
-        guard let filter = CIFilter(name: "CIPhotoEffectMono") else {
-            return image
-        }
-        filter.setValue(image, forKey: kCIInputImageKey)
-        return filter.outputImage ?? image
-    }
-
-    /// 따뜻한 필터
-    private func applyWarmFilter(to image: CIImage) -> CIImage {
-        guard let filter = CIFilter(name: "CITemperatureAndTint") else {
-            return image
-        }
-
-        let warmVector = CIVector(x: 8000, y: 0)
-        let neutralVector = CIVector(x: 6500, y: 0)
-
-        filter.setValue(image, forKey: kCIInputImageKey)
-        filter.setValue(warmVector, forKey: "inputNeutral")
-        filter.setValue(neutralVector, forKey: "inputTargetNeutral")
-
-        return filter.outputImage ?? image
-    }
-
-    /// 차가운 필터
-    private func applyCoolFilter(to image: CIImage) -> CIImage {
-        guard let filter = CIFilter(name: "CITemperatureAndTint") else {
-            return image
-        }
-
-        let coolVector = CIVector(x: 5000, y: 0)
-        let neutralVector = CIVector(x: 6500, y: 0)
-
-        filter.setValue(image, forKey: kCIInputImageKey)
-        filter.setValue(coolVector, forKey: "inputNeutral")
-        filter.setValue(neutralVector, forKey: "inputTargetNeutral")
-
-        return filter.outputImage ?? image
+        return VideoFilterHelper.applyFilter(filter, to: image)
     }
 
     /// 현재 시간에 해당하는 자막 찾기
