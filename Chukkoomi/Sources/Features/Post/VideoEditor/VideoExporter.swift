@@ -78,16 +78,22 @@ struct VideoExporter {
         // 1) Trim
         let trimmedAsset = try await applyTrim(to: asset, editState: editState, composition: composition)
 
-        // 2) Filter
-        var videoComposition = try await applyFilter(to: trimmedAsset, filterType: editState.selectedFilter)
+        // 2) Filter와 Subtitles 처리
+        let videoComposition: AVVideoComposition?
 
-        // 3) Subtitles
         if !editState.subtitles.isEmpty {
-//            videoComposition = try await applySubtitles(
-//                to: trimmedAsset,
-//                editState: editState,
-//                baseVideoComposition: videoComposition
-//            )
+            // 자막이 있으면: 커스텀 compositor가 필터와 자막을 함께 처리
+            videoComposition = try await applySubtitles(
+                to: trimmedAsset,
+                editState: editState,
+                baseVideoComposition: nil
+            )
+        } else if editState.selectedFilter != nil {
+            // 자막이 없고 필터만 있으면: 필터만 적용
+            videoComposition = try await applyFilter(to: trimmedAsset, filterType: editState.selectedFilter)
+        } else {
+            // 필터도 자막도 없으면: nil
+            videoComposition = nil
         }
 
         return (trimmedAsset, videoComposition)
@@ -153,170 +159,48 @@ struct VideoExporter {
         )
     }
 
-//    @MainActor
-//    private func applySubtitles(
-//        to asset: AVAsset,
-//        editState: EditVideoFeature.EditState,
-//        baseVideoComposition: AVVideoComposition?
-//    ) async throws -> AVVideoComposition {
-//        guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
-//            return baseVideoComposition ?? AVMutableVideoComposition()
-//        }
-//
-//        let totalDuration = try await asset.load(.duration).seconds
-//
-//        let naturalSize = try await videoTrack.load(.naturalSize)
-//        let preferredTransform = try await videoTrack.load(.preferredTransform)
-//
-//        // 회전 고려한 크기
-//        let computedSize: CGSize = (preferredTransform.a == 0 && preferredTransform.d == 0)
-//            ? CGSize(width: naturalSize.height, height: naturalSize.width)
-//            : naturalSize
-//
-//        // 사용할 renderSize
-//        var targetRenderSize = baseVideoComposition?.renderSize ?? computedSize
-//
-//        func isValidSize(_ s: CGSize) -> Bool {
-//            s.width.isFinite && s.height.isFinite && s.width > 0 && s.height > 0
-//        }
-//        if !isValidSize(targetRenderSize) {
-//            if isValidSize(naturalSize) {
-//                targetRenderSize = naturalSize
-//            } else {
-//                let isPortraitGuess = computedSize.height > computedSize.width
-//                targetRenderSize = isPortraitGuess ? CGSize(width: 1080, height: 1920)
-//                                                   : CGSize(width: 1920, height: 1080)
-//            }
-//        }
-//
-//        // videoComposition 준비
-//        let mutableVideoComposition: AVMutableVideoComposition
-//        if let base = baseVideoComposition?.mutableCopy() as? AVMutableVideoComposition {
-//            mutableVideoComposition = base
-//            mutableVideoComposition.renderSize = targetRenderSize
-//            if mutableVideoComposition.frameDuration == .invalid {
-//                mutableVideoComposition.frameDuration = CMTime(value: 1, timescale: 30)
-//            }
-//            if mutableVideoComposition.instructions.isEmpty {
-//                let instruction = AVMutableVideoCompositionInstruction()
-//                instruction.timeRange = CMTimeRange(start: .zero, duration: try await asset.load(.duration))
-//                let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
-//                layerInstruction.setTransform(preferredTransform, at: .zero)
-//                instruction.layerInstructions = [layerInstruction]
-//                mutableVideoComposition.instructions = [instruction]
-//            }
-//        } else {
-//            mutableVideoComposition = AVMutableVideoComposition()
-//            mutableVideoComposition.renderSize = targetRenderSize
-//            mutableVideoComposition.frameDuration = CMTime(value: 1, timescale: 30)
-//
-//            let instruction = AVMutableVideoCompositionInstruction()
-//            instruction.timeRange = CMTimeRange(start: .zero, duration: try await asset.load(.duration))
-//
-//            let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
-//            layerInstruction.setTransform(preferredTransform, at: .zero)
-//            instruction.layerInstructions = [layerInstruction]
-//            mutableVideoComposition.instructions = [instruction]
-//        }
-//
-//        // 레이어 트리 생성 (동기적으로)
-//        CATransaction.begin()
-//        CATransaction.setDisableActions(true)
-//
-//        let parentLayer = CALayer()
-//        let videoLayer = CALayer()
-//
-//        parentLayer.frame = CGRect(origin: .zero, size: targetRenderSize)
-//        parentLayer.isGeometryFlipped = true
-//        videoLayer.frame = CGRect(origin: .zero, size: targetRenderSize)
-//        parentLayer.addSublayer(videoLayer)
-//
-//        // 자막 레이어 추가
-//        for subtitle in editState.subtitles {
-//            let textLayer = createSubtitleLayer(
-//                subtitle: subtitle,
-//                videoSize: targetRenderSize,
-//                trimStartTime: editState.trimStartTime,
-//                totalDuration: totalDuration
-//            )
-//            parentLayer.addSublayer(textLayer)
-//        }
-//
-//        // CoreAnimationTool 설정
-//        mutableVideoComposition.animationTool = AVVideoCompositionCoreAnimationTool(
-//            postProcessingAsVideoLayer: videoLayer,
-//            in: parentLayer
-//        )
-//
-//        CATransaction.commit()
-//
-//        return mutableVideoComposition
-//    }
-//
-//    @MainActor
-//    private func createSubtitleLayer(
-//        subtitle: EditVideoFeature.Subtitle,
-//        videoSize: CGSize,
-//        trimStartTime: Double,
-//        totalDuration: Double
-//    ) -> CALayer {
-//        // UIImage로 텍스트 렌더링
-//        let font = UIFont.boldSystemFont(ofSize: 50)
-//        let attributes: [NSAttributedString.Key: Any] = [
-//            .font: font,
-//            .foregroundColor: UIColor.white,
-//            .strokeColor: UIColor.black,
-//            .strokeWidth: -5.0
-//        ]
-//
-//        let attributedString = NSAttributedString(string: subtitle.text, attributes: attributes)
-//        let textSize = attributedString.size()
-//
-//        // 이미지 생성
-//        let renderer = UIGraphicsImageRenderer(size: CGSize(width: textSize.width + 20, height: textSize.height + 20))
-//        let image = renderer.image { context in
-//            attributedString.draw(at: CGPoint(x: 10, y: 10))
-//        }
-//
-//        // 이미지 레이어
-//        let imageLayer = CALayer()
-//        imageLayer.contents = image.cgImage
-//        imageLayer.frame = CGRect(
-//            x: (videoSize.width - image.size.width) / 2,
-//            y: 20,
-//            width: image.size.width,
-//            height: image.size.height
-//        )
-//        imageLayer.contentsGravity = .center
-//
-//        // 시간 보정
-//        let rawStart = subtitle.startTime - trimStartTime
-//        let rawEnd = subtitle.endTime - trimStartTime
-//        var startTime = max(0, rawStart)
-//        var endTime = max(0, rawEnd)
-//        if endTime < startTime { swap(&startTime, &endTime) }
-//
-//        if totalDuration.isFinite && totalDuration > 0 {
-//            startTime = min(max(0, startTime), totalDuration)
-//            endTime = min(max(0, endTime), totalDuration)
-//        }
-//
-//        let minDuration: Double = 0.001
-//        let duration = max(endTime - startTime, minDuration)
-//
-//        // 애니메이션
-//        let animation = CAKeyframeAnimation(keyPath: "opacity")
-//        animation.values = [0, 1, 1, 0]
-//        animation.keyTimes = [0.0, 0.05, 0.95, 1.0].map { NSNumber(value: $0) }
-//        animation.duration = duration
-//        animation.beginTime = AVCoreAnimationBeginTimeAtZero + startTime
-//        animation.isRemovedOnCompletion = false
-//        animation.fillMode = .both
-//
-//        imageLayer.add(animation, forKey: "subtitleOpacity")
-//
-//        return imageLayer
-//    }
+    private func applySubtitles(
+        to asset: AVAsset,
+        editState: EditVideoFeature.EditState,
+        baseVideoComposition: AVVideoComposition?
+    ) async throws -> AVVideoComposition {
+        // 비디오 트랙 가져오기
+        guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
+            // 비디오 트랙이 없으면 기본 composition 반환
+            if let baseComposition = baseVideoComposition {
+                return baseComposition
+            }
+            throw ExportError.failedToLoadAsset
+        }
+
+        let naturalSize = try await videoTrack.load(.naturalSize)
+        let frameDuration = try await videoTrack.load(.minFrameDuration)
+        let duration = try await asset.load(.duration)
+
+        // 커스텀 compositor를 사용하는 AVMutableVideoComposition 생성
+        let composition = AVMutableVideoComposition()
+        composition.frameDuration = frameDuration
+        composition.renderSize = naturalSize
+        composition.customVideoCompositorClass = VideoCompositorWithSubtitles.self
+
+        // LayerInstruction 생성
+        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
+
+        // 커스텀 Instruction 생성 (필터와 자막 정보 포함)
+        let instruction = SubtitleVideoCompositionInstruction(
+            timeRange: CMTimeRange(start: .zero, duration: duration),
+            filter: editState.selectedFilter,
+            subtitles: editState.subtitles,
+            trimStartTime: editState.trimStartTime,
+            sourceTrackIDs: [NSNumber(value: videoTrack.trackID)],
+            layerInstructions: [layerInstruction]
+        )
+
+        composition.instructions = [instruction]
+
+        return composition
+    }
+
 
     private func exportComposition(
         _ composition: AVAsset,
