@@ -93,14 +93,11 @@ struct ChatRoomRow: View {
                 )
                 .clipShape(Circle())
             } else {
-                Circle()
-                    .fill(Color.gray.opacity(0.3))
+                Image("기본 프로필")
+                    .resizable()
+                    .scaledToFill()
                     .frame(width: 56, height: 56)
-                    .overlay {
-                        AppIcon.personFill
-                            .foregroundColor(.gray)
-                            .font(.system(size: 28))
-                    }
+                    .clipShape(Circle())
             }
 
             // 닉네임 + 마지막 메시지
@@ -128,7 +125,9 @@ struct ChatRoomRow: View {
                         .foregroundColor(.gray)
                         .lineLimit(1)
                 } else if let lastChat = chatRoom.lastChat, !lastChat.files.isEmpty {
-                    Text("사진")
+                    // 파일이 있는 경우 영상/사진 구분
+                    let hasVideo = lastChat.files.contains { MediaTypeHelper.isVideoPath($0) }
+                    Text(hasVideo ? "동영상을 보냈습니다" : "사진을 보냈습니다")
                         .font(.system(size: 14))
                         .foregroundColor(.gray)
                 } else {
