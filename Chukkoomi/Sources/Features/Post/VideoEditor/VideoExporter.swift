@@ -37,10 +37,25 @@ struct VideoExporter {
     func export(
         asset: PHAsset,
         editState: EditVideoFeature.EditState,
+        preProcessedVideoURL: URL? = nil,
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
-        let avAsset = try await loadAVAsset(from: asset)
-        let (composition, videoComposition) = try await applyEdits(to: avAsset, editState: editState)
+        let avAsset: AVAsset
+
+        // AnimeGAN 필터이고 미리 처리된 영상이 있으면 사용
+        if editState.selectedFilter == .animeGANHayao, let preProcessedURL = preProcessedVideoURL {
+            avAsset = AVAsset(url: preProcessedURL)
+        } else {
+            avAsset = try await loadAVAsset(from: asset)
+        }
+
+        // 미리 처리된 영상을 사용하는 경우, 필터는 이미 적용되어 있음
+        let isFilterAlreadyApplied = editState.selectedFilter == .animeGANHayao && preProcessedVideoURL != nil
+        let (composition, videoComposition) = try await applyEdits(
+            to: avAsset,
+            editState: editState,
+            isFilterAlreadyApplied: isFilterAlreadyApplied
+        )
         let exportedURL = try await exportComposition(
             composition,
             videoComposition: videoComposition,
@@ -69,7 +84,8 @@ struct VideoExporter {
 
     private func applyEdits(
         to asset: AVAsset,
-        editState: EditVideoFeature.EditState
+        editState: EditVideoFeature.EditState,
+        isFilterAlreadyApplied: Bool
     ) async throws -> (AVAsset, AVVideoComposition?) {
         let composition = AVMutableComposition()
 
@@ -81,15 +97,22 @@ struct VideoExporter {
 
         if !editState.subtitles.isEmpty {
             // 자막이 있으면: 커스텀 compositor가 필터와 자막을 함께 처리
-            videoComposition = try await applySubtitles(to: trimmedAsset, editState: editState)
-        } else if editState.selectedFilter != nil {
+            // 단, 필터가 이미 적용된 경우 필터는 스킵
+            let filterToApply = isFilterAlreadyApplied ? nil : editState.selectedFilter
+            videoComposition = try await applySubtitles(
+                to: trimmedAsset,
+                editState: editState,
+                filterToApply: filterToApply
+            )
+        } else if editState.selectedFilter != nil && !isFilterAlreadyApplied {
             // 자막이 없고 필터만 있으면: VideoFilterManager로 필터만 적용
+            // (이미 필터가 적용된 경우는 제외)
             videoComposition = await VideoFilterManager.createVideoComposition(
                 for: trimmedAsset,
                 filter: editState.selectedFilter
             )
         } else {
-            // 필터도 자막도 없으면: nil
+            // 필터도 자막도 없거나, 이미 필터가 적용되어 있으면: nil
             videoComposition = nil
         }
 
@@ -148,7 +171,8 @@ struct VideoExporter {
 
     private func applySubtitles(
         to asset: AVAsset,
-        editState: EditVideoFeature.EditState
+        editState: EditVideoFeature.EditState,
+        filterToApply: VideoFilter?
     ) async throws -> AVVideoComposition {
         // 비디오 트랙 가져오기
         guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
@@ -169,9 +193,10 @@ struct VideoExporter {
         let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
 
         // 커스텀 Instruction 생성 (필터와 자막 정보 포함)
+        // filterToApply를 사용 - 이미 필터가 적용된 경우 nil
         let instruction = SubtitleVideoCompositionInstruction(
             timeRange: CMTimeRange(start: .zero, duration: duration),
-            filter: editState.selectedFilter,
+            filter: filterToApply,
             subtitles: editState.subtitles,
             trimStartTime: editState.trimStartTime,
             sourceTrackIDs: [NSNumber(value: videoTrack.trackID)],

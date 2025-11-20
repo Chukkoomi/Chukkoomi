@@ -232,12 +232,13 @@ struct EditVideoFeature {
                 state.isExporting = true
                 state.exportProgress = 0.0
 
-                return .run { [videoAsset = state.videoAsset, editState = state.editState] send in
+                return .run { [videoAsset = state.videoAsset, editState = state.editState, preProcessedVideoURL = state.preProcessedVideoURL] send in
                     do {
                         let exporter = VideoExporter()
                         let exportedURL = try await exporter.export(
                             asset: videoAsset,
                             editState: editState,
+                            preProcessedVideoURL: preProcessedVideoURL,
                             progressHandler: { progress in
                                 Task {
                                     await send(.exportProgressUpdated(progress))
