@@ -92,7 +92,26 @@ struct VideoExporter {
         // 1) Trim
         let trimmedAsset = try await applyTrim(to: asset, editState: editState, composition: composition)
 
-        // 2) Filter와 Subtitles 처리
+        // 2) 목표 크기 계산 (Resize)
+        guard let videoTrack = try await trimmedAsset.loadTracks(withMediaType: .video).first else {
+            return (trimmedAsset, nil)
+        }
+        let naturalSize = try await videoTrack.load(.naturalSize)
+
+        // 전처리 영상을 사용하는 경우, 이미 리사이징되어 있으므로 naturalSize를 그대로 사용
+        let targetSize: CGSize
+        if isFilterAlreadyApplied {
+            // 전처리 영상은 이미 리사이징되어 있음
+            targetSize = naturalSize
+        } else {
+            // 새로 처리하는 경우 목표 크기 계산
+            targetSize = CompressHelper.resizedSizeForiPhoneMax(
+                originalWidth: naturalSize.width,
+                originalHeight: naturalSize.height
+            )
+        }
+
+        // 3) Filter와 Subtitles 처리
         let videoComposition: AVVideoComposition?
 
         if !editState.subtitles.isEmpty {
@@ -102,17 +121,25 @@ struct VideoExporter {
             videoComposition = try await applySubtitles(
                 to: trimmedAsset,
                 editState: editState,
-                filterToApply: filterToApply
+                filterToApply: filterToApply,
+                targetSize: targetSize
             )
         } else if editState.selectedFilter != nil && !isFilterAlreadyApplied {
             // 자막이 없고 필터만 있으면: VideoFilterManager로 필터만 적용
             // (이미 필터가 적용된 경우는 제외)
             videoComposition = await VideoFilterManager.createVideoComposition(
                 for: trimmedAsset,
-                filter: editState.selectedFilter
+                filter: editState.selectedFilter,
+                targetSize: targetSize
+            )
+        } else if targetSize != naturalSize {
+            // 필터도 자막도 없지만 리사이즈가 필요한 경우
+            videoComposition = await CompressHelper.createResizeVideoComposition(
+                for: trimmedAsset,
+                targetSize: targetSize
             )
         } else {
-            // 필터도 자막도 없거나, 이미 필터가 적용되어 있으면: nil
+            // 필터도 자막도 리사이즈도 필요 없으면: nil
             videoComposition = nil
         }
 
@@ -172,7 +199,8 @@ struct VideoExporter {
     private func applySubtitles(
         to asset: AVAsset,
         editState: EditVideoFeature.EditState,
-        filterToApply: VideoFilter?
+        filterToApply: VideoFilter?,
+        targetSize: CGSize? = nil
     ) async throws -> AVVideoComposition {
         // 비디오 트랙 가져오기
         guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
@@ -183,10 +211,13 @@ struct VideoExporter {
         let frameDuration = try await videoTrack.load(.minFrameDuration)
         let duration = try await asset.load(.duration)
 
+        // 목표 크기 설정 (targetSize가 제공되면 사용, 아니면 naturalSize)
+        let renderSize = targetSize ?? naturalSize
+
         // 커스텀 compositor를 사용하는 AVMutableVideoComposition 생성
         let composition = AVMutableVideoComposition()
         composition.frameDuration = frameDuration
-        composition.renderSize = naturalSize
+        composition.renderSize = renderSize
         composition.customVideoCompositorClass = VideoCompositorWithSubtitles.self
 
         // LayerInstruction 생성

@@ -18,8 +18,9 @@ enum VideoFilterHelper {
     ///   - filter: 적용할 필터
     ///   - image: 원본 이미지
     ///   - originalImage: ML 모델용 원본 이미지 (clamped되지 않은)
+    ///   - targetSize: 목표 크기 (AnimeGAN 필터용, nil이면 원본 크기)
     /// - Returns: 필터가 적용된 이미지
-    static func applyFilter(_ filter: VideoFilter, to image: CIImage, originalImage: CIImage? = nil) -> CIImage {
+    static func applyFilter(_ filter: VideoFilter, to image: CIImage, originalImage: CIImage? = nil, targetSize: CGSize? = nil) -> CIImage {
         switch filter {
         case .blackAndWhite:
             return applyBlackAndWhiteFilter(to: image)
@@ -28,7 +29,7 @@ enum VideoFilterHelper {
         case .cool:
             return applyCoolFilter(to: image)
         case .animeGANHayao:
-            return applyAnimeGANHayao(to: originalImage ?? image)
+            return applyAnimeGANHayao(to: originalImage ?? image, targetSize: targetSize)
         }
     }
 
@@ -78,7 +79,11 @@ enum VideoFilterHelper {
     }
 
     /// AnimeGANv3 CoreML 필터 적용
-    private static func applyAnimeGANHayao(to image: CIImage) -> CIImage {
+    /// - Parameters:
+    ///   - image: 원본 이미지
+    ///   - targetSize: 목표 크기 (nil이면 원본 크기)
+    /// - Returns: 필터가 적용된 이미지
+    private static func applyAnimeGANHayao(to image: CIImage, targetSize: CGSize? = nil) -> CIImage {
         // extent 유효성 검사
         guard image.extent.width > 0 && image.extent.height > 0,
               image.extent.width.isFinite && image.extent.height.isFinite else {
@@ -102,8 +107,8 @@ enum VideoFilterHelper {
             // AnimeGAN 입력 크기는 512x512로 고정
             let modelSize = CGSize(width: 512, height: 512)
 
-            // 원본 이미지 크기 저장
-            let originalSize = image.extent.size
+            // 목표 크기 결정: targetSize가 제공되면 사용, 아니면 원본 크기
+            let finalSize = targetSize ?? image.extent.size
 
             // 이미지를 모델 입력 크기로 리사이즈
             let scaleX = modelSize.width / image.extent.width
@@ -144,9 +149,9 @@ enum VideoFilterHelper {
                 return image
             }
 
-            // 원본 크기로 복원
-            let scaleBackX = originalSize.width / outputImage.extent.width
-            let scaleBackY = originalSize.height / outputImage.extent.height
+            // 목표 크기로 리사이징
+            let scaleBackX = finalSize.width / outputImage.extent.width
+            let scaleBackY = finalSize.height / outputImage.extent.height
             outputImage = outputImage.transformed(by: CGAffineTransform(scaleX: scaleBackX, y: scaleBackY))
 
             return outputImage

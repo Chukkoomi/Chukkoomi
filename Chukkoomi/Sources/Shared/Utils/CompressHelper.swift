@@ -6,6 +6,8 @@
 //
 
 import UIKit
+import CoreGraphics
+import AVFoundation
 
 enum CompressHelper {
     
@@ -58,4 +60,89 @@ enum CompressHelper {
 
         return imageData
     }
+    
+    /// 원본 픽셀 크기를 받아, 가로 1320px 기준으로 비율 유지하여 리사이즈된 사이즈를 반환
+    static func resizedSizeForiPhoneMax(originalWidth: CGFloat, originalHeight: CGFloat) -> CGSize {
+        let maxWidthPx: CGFloat = 1320  // 440pt × scale(3.0)
+
+        // 원본이 이미 더 작으면 리사이즈할 필요 없음
+        guard originalWidth > maxWidthPx else {
+            return CGSize(width: originalWidth, height: originalHeight)
+        }
+
+        let scale = maxWidthPx / originalWidth
+        let targetWidth = maxWidthPx
+        let targetHeight = originalHeight * scale
+
+        return CGSize(width: targetWidth, height: targetHeight)
+    }
+
+    /// 비디오를 리사이징하기 위한 AVVideoComposition 생성
+    /// - Parameters:
+    ///   - asset: 원본 비디오 asset
+    ///   - targetSize: 목표 크기 (nil이면 resizedSizeForiPhoneMax로 자동 계산)
+    /// - Returns: 리사이징 정보가 담긴 AVVideoComposition, 리사이즈 불필요시 nil
+    static func createResizeVideoComposition(
+        for asset: AVAsset,
+        targetSize: CGSize? = nil
+    ) async -> AVVideoComposition? {
+        // 비디오 트랙 가져오기
+        guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first else {
+            return nil
+        }
+
+        let naturalSize = try? await videoTrack.load(.naturalSize)
+        let preferredTransform = try? await videoTrack.load(.preferredTransform)
+        let frameDuration = try? await videoTrack.load(.minFrameDuration)
+
+        guard let naturalSize = naturalSize else {
+            return nil
+        }
+
+        // 목표 크기 계산
+        let finalTargetSize = targetSize ?? resizedSizeForiPhoneMax(
+            originalWidth: naturalSize.width,
+            originalHeight: naturalSize.height
+        )
+
+        // 이미 목표 크기와 같거나 작으면 리사이즈 불필요
+        if finalTargetSize == naturalSize {
+            return nil
+        }
+
+        // AVMutableVideoComposition 생성
+        let composition = AVMutableVideoComposition()
+        composition.renderSize = finalTargetSize
+        if let frameDuration = frameDuration {
+            composition.frameDuration = frameDuration
+        }
+
+        // Instruction 생성
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = CMTimeRange(
+            start: .zero,
+            duration: (try? await asset.load(.duration)) ?? .zero
+        )
+
+        // LayerInstruction에 스케일 transform 적용
+        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
+
+        // 스케일 계산
+        let scaleX = finalTargetSize.width / naturalSize.width
+        let scaleY = finalTargetSize.height / naturalSize.height
+        var transform = CGAffineTransform(scaleX: scaleX, y: scaleY)
+
+        // preferredTransform 적용 (회전 정보 유지)
+        if let preferredTransform = preferredTransform {
+            transform = preferredTransform.concatenating(transform)
+        }
+
+        layerInstruction.setTransform(transform, at: .zero)
+        instruction.layerInstructions = [layerInstruction]
+
+        composition.instructions = [instruction]
+
+        return composition
+    }
 }
+

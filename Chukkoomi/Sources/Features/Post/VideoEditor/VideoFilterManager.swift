@@ -31,10 +31,12 @@ struct VideoFilterManager {
     /// - Parameters:
     ///   - asset: 원본 비디오 AVAsset
     ///   - filter: 적용할 필터
+    ///   - targetSize: 목표 크기 (nil이면 원본 크기 사용)
     /// - Returns: 필터가 적용된 AVVideoComposition (필터가 없으면 nil)
     static func createVideoComposition(
         for asset: AVAsset,
-        filter: VideoFilter?
+        filter: VideoFilter?,
+        targetSize: CGSize? = nil
     ) async -> AVVideoComposition? {
         // 필터가 없으면 nil 반환
         guard let filter = filter else {
@@ -56,16 +58,18 @@ struct VideoFilterManager {
                 let source = request.sourceImage
                 let clampedSource = source.clampedToExtent()
 
-                // 필터별로 CIFilter 생성 및 적용 (원본과 clamped 버전 모두 전달)
-                let output = applyFilter(filter, to: clampedSource, originalImage: source)
+                // 필터별로 CIFilter 생성 및 적용 (원본과 clamped 버전, targetSize 모두 전달)
+                let output = applyFilter(filter, to: clampedSource, originalImage: source, targetSize: targetSize)
 
                 // GPU 가속 컨텍스트를 명시적으로 전달
                 request.finish(with: output, context: VideoFilterHelper.gpuContext)
             }
         )
 
-        // naturalSize 설정
-        if let naturalSize = naturalSize {
+        // renderSize 설정 (targetSize가 있으면 사용, 없으면 naturalSize)
+        if let targetSize = targetSize {
+            composition.renderSize = targetSize
+        } else if let naturalSize = naturalSize {
             composition.renderSize = naturalSize
         }
 
@@ -93,8 +97,8 @@ struct VideoFilterManager {
     // MARK: - Private Helper Methods
 
     /// CIImage에 필터 적용 (VideoFilterHelper 사용)
-    private static func applyFilter(_ filter: VideoFilter, to image: CIImage, originalImage: CIImage) -> CIImage {
-        return VideoFilterHelper.applyFilter(filter, to: image, originalImage: originalImage)
+    private static func applyFilter(_ filter: VideoFilter, to image: CIImage, originalImage: CIImage, targetSize: CGSize? = nil) -> CIImage {
+        return VideoFilterHelper.applyFilter(filter, to: image, originalImage: originalImage, targetSize: targetSize)
     }
 
     /// 비디오 orientation 확인 헬퍼
