@@ -27,7 +27,7 @@ enum AppIcon {
     static let play = Image(systemName: "play.circle")
     static let trim = Image(systemName: "scissors")
     static let addSubtitle = Image(systemName: "plus.circle")
-    static let filter = Image(systemName: "fireworks")
+    static let filter = Image(systemName: "camera.filters")
     
     // Tab Bar Icons
     static let home = Image(systemName: "house.fill")

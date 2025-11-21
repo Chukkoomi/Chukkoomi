@@ -17,29 +17,34 @@ struct EditVideoView: View {
     var body: some View {
         WithViewStore(store, observe: { $0 }) { viewStore in
             VStack(spacing: 0) {
-                // 커스텀 비디오 플레이어 (16:9 비율)
-                Color.black
-                    .aspectRatio(16/9, contentMode: .fit)
-                    .overlay {
-                        CustomVideoPlayerView(
-                            asset: viewStore.videoAsset,
-                            preProcessedVideoURL: viewStore.preProcessedVideoURL,
-                            isPlaying: viewStore.isPlaying,
-                            seekTrigger: viewStore.seekTrigger,
-                            seekTarget: viewStore.seekTarget,
-                            selectedFilter: viewStore.editState.selectedFilter,
-                            onTimeUpdate: { time in viewStore.send(.updateCurrentTime(time)) },
-                            onDurationUpdate: { duration in viewStore.send(.updateDuration(duration)) },
-                            onSeekCompleted: { viewStore.send(.seekCompleted) },
-                            onFilterApplied: { viewStore.send(.filterApplied) },
-                            onPlaybackEnded: { viewStore.send(.playbackEnded) }
-                        )
+                // 커스텀 비디오 플레이어
+                CustomVideoPlayerView(
+                    asset: viewStore.videoAsset,
+                    preProcessedVideoURL: viewStore.preProcessedVideoURL,
+                    isPlaying: viewStore.isPlaying,
+                    seekTrigger: viewStore.seekTrigger,
+                    seekTarget: viewStore.seekTarget,
+                    selectedFilter: viewStore.editState.selectedFilter,
+                    onTimeUpdate: { time in viewStore.send(.updateCurrentTime(time)) },
+                    onDurationUpdate: { duration in viewStore.send(.updateDuration(duration)) },
+                    onSeekCompleted: { viewStore.send(.seekCompleted) },
+                    onFilterApplied: { viewStore.send(.filterApplied) },
+                    onPlaybackEnded: { viewStore.send(.playbackEnded) }
+                )
+                .frame(maxWidth: .infinity)
+                .frame(height: 300)
+                .overlay {
+                    // 자막 오버레이
+                    SubtitleOverlayView(
+                        currentTime: viewStore.currentTime,
+                        subtitles: viewStore.editState.subtitles
+                    )
+                }
+                .overlay {
+                    if viewStore.isApplyingFilter {
+                        FilterApplyingOverlayView()
                     }
-                    .overlay {
-                        if viewStore.isApplyingFilter {
-                            FilterApplyingOverlayView()
-                        }
-                    }
+                }
                 
                 // 편집 영역
                 ScrollView {
@@ -1544,10 +1549,12 @@ private struct FilterButton: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 8) {
-                // 필터 미리보기 (TODO: 나중에 실제 필터 적용된 썸네일로 변경)
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.gray.opacity(0.3))
+                // 필터 미리보기
+                Image(image)
+                    .resizable()
+                    .scaledToFill()
                     .frame(width: 80, height: 80)
+                    .customRadius()
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
@@ -1558,6 +1565,19 @@ private struct FilterButton: View {
                     .font(.appCaption)
                     .foregroundStyle(isSelected ? .blue : .black)
             }
+        }
+    }
+    
+    var image: String {
+        switch filter {
+        case .blackAndWhite:
+            return "video_mono"
+        case .warm:
+            return "video_warm"
+        case .cool:
+            return "video_cool"
+        case .animeGANHayao:
+            return "video_anime"
         }
     }
 }

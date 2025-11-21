@@ -17,7 +17,7 @@ enum VideoFilter: String, CaseIterable, Equatable {
     case blackAndWhite = "흑백"
     case warm = "따뜻한"
     case cool = "차갑게"
-    case animeGANHayao = "Hayao"
+    case animeGANHayao = "그림"
 
     var displayName: String {
         return rawValue
