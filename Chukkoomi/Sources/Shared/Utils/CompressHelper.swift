@@ -61,9 +61,9 @@ enum CompressHelper {
         return imageData
     }
     
-    /// 원본 픽셀 크기를 받아, 가로 1320px 기준으로 비율 유지하여 리사이즈된 사이즈를 반환
+    /// 원본 픽셀 크기를 받아, 가로 440px 기준으로 비율 유지하여 리사이즈된 사이즈를 반환
     static func resizedSizeForiPhoneMax(originalWidth: CGFloat, originalHeight: CGFloat) -> CGSize {
-        let maxWidthPx: CGFloat = 1320  // 440pt × scale(3.0)
+        let maxWidthPx: CGFloat = 440
 
         // 원본이 이미 더 작으면 리사이즈할 필요 없음
         guard originalWidth > maxWidthPx else {
@@ -143,15 +143,40 @@ enum CompressHelper {
             break
         }
 
-        // 이제 리사이즈 스케일 적용
+        // 비율을 유지하는 스케일 계산 (aspect fit)
         let scaleX = renderSize.width / naturalSize.width
         let scaleY = renderSize.height / naturalSize.height
-        let scaleTransform = CGAffineTransform(scaleX: scaleX, y: scaleY)
+        let scale = min(scaleX, scaleY)  // 작은 값 사용하여 비율 유지
+        let scaleTransform = CGAffineTransform(scaleX: scale, y: scale)
 
         // 최종 변환 = 스케일 → 회전 보정
         let finalTransform = scaleTransform.concatenating(correctedTransform)
 
-        layerInstruction.setTransform(finalTransform, at: .zero)
+        // 중앙 정렬을 위한 이동 계산
+        let scaledWidth = naturalSize.width * scale
+        let scaledHeight = naturalSize.height * scale
+        let tx: CGFloat
+        let ty: CGFloat
+
+        switch Int(videoAngleInDegree) {
+        case 90:
+            tx = (renderSize.width - scaledHeight) / 2 + scaledHeight
+            ty = (renderSize.height - scaledWidth) / 2
+        case -90, 270:
+            tx = (renderSize.width - scaledHeight) / 2
+            ty = (renderSize.height - scaledWidth) / 2 + scaledWidth
+        case 180, -180:
+            tx = (renderSize.width - scaledWidth) / 2 + scaledWidth
+            ty = (renderSize.height - scaledHeight) / 2 + scaledHeight
+        default:
+            tx = (renderSize.width - scaledWidth) / 2
+            ty = (renderSize.height - scaledHeight) / 2
+        }
+
+        let translateTransform = CGAffineTransform(translationX: tx, y: ty)
+        let finalTransformWithTranslation = finalTransform.concatenating(translateTransform)
+
+        layerInstruction.setTransform(finalTransformWithTranslation, at: .zero)
         instruction.layerInstructions = [layerInstruction]
 
         composition.instructions = [instruction]

@@ -23,13 +23,25 @@ final class SubtitleVideoCompositionInstruction: NSObject, AVVideoCompositionIns
     let trimStartTime: Double
     let layerInstructions: [AVVideoCompositionLayerInstruction]
 
+    // 리사이징 정보
+    let naturalSize: CGSize
+    let renderSize: CGSize
+    let scale: CGFloat
+    let offsetX: CGFloat
+    let offsetY: CGFloat
+
     init(
         timeRange: CMTimeRange,
         filter: VideoFilter?,
         subtitles: [EditVideoFeature.Subtitle],
         trimStartTime: Double,
         sourceTrackIDs: [NSValue],
-        layerInstructions: [AVVideoCompositionLayerInstruction]
+        layerInstructions: [AVVideoCompositionLayerInstruction],
+        naturalSize: CGSize,
+        renderSize: CGSize,
+        scale: CGFloat,
+        offsetX: CGFloat,
+        offsetY: CGFloat
     ) {
         self.timeRange = timeRange
         self.filter = filter
@@ -37,6 +49,11 @@ final class SubtitleVideoCompositionInstruction: NSObject, AVVideoCompositionIns
         self.trimStartTime = trimStartTime
         self.requiredSourceTrackIDs = sourceTrackIDs
         self.layerInstructions = layerInstructions
+        self.naturalSize = naturalSize
+        self.renderSize = renderSize
+        self.scale = scale
+        self.offsetX = offsetX
+        self.offsetY = offsetY
         super.init()
     }
 }
@@ -127,22 +144,30 @@ final class VideoCompositorWithSubtitles: NSObject, AVVideoCompositing {
                 outputImage = self.applyFilter(filter, to: outputImage)
             }
 
-            // 2. 자막 적용
+            // 2. aspect-fit 리사이징 및 중앙 정렬
+            let scaleTransform = CGAffineTransform(scaleX: instruction.scale, y: instruction.scale)
+            let translateTransform = CGAffineTransform(translationX: instruction.offsetX, y: instruction.offsetY)
+            let finalTransform = scaleTransform.concatenating(translateTransform)
+            outputImage = outputImage.transformed(by: finalTransform)
+
+            // renderSize 영역으로 crop
+            outputImage = outputImage.cropped(to: CGRect(origin: .zero, size: instruction.renderSize))
+
+            // 3. 자막 적용
             let currentTime = CMTimeGetSeconds(asyncVideoCompositionRequest.compositionTime)
             let adjustedTime = currentTime + instruction.trimStartTime
 
             if let subtitle = self.findSubtitle(at: adjustedTime, subtitles: instruction.subtitles) {
-                let videoSize = outputImage.extent.size
                 if let subtitleImage = self.createSubtitleImage(
                     text: subtitle.text,
-                    videoSize: videoSize
+                    videoSize: instruction.renderSize
                 ) {
                     // 자막 이미지를 비디오 프레임 위에 합성
                     outputImage = subtitleImage.composited(over: outputImage)
                 }
             }
 
-            // 3. 렌더링
+            // 4. 렌더링
             guard let renderPixelBuffer = asyncVideoCompositionRequest.renderContext.newPixelBuffer() else {
                 asyncVideoCompositionRequest.finish(with: NSError(
                     domain: "VideoCompositor",

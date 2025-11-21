@@ -220,11 +220,36 @@ struct VideoExporter {
         }
 
         let naturalSize = try await videoTrack.load(.naturalSize)
+        let preferredTransform = try await videoTrack.load(.preferredTransform)
         let frameDuration = try await videoTrack.load(.minFrameDuration)
         let duration = try await asset.load(.duration)
 
-        // 목표 크기 설정 (targetSize가 제공되면 사용, 아니면 naturalSize)
-        let renderSize = targetSize ?? naturalSize
+        // 회전 각도 확인
+        let correctedTransform = preferredTransform ?? .identity
+        let videoAngleInDegree = atan2(correctedTransform.b, correctedTransform.a) * 180 / .pi
+
+        // targetSize가 있으면 회전을 고려한 renderSize 계산
+        var renderSize = naturalSize
+        if let targetSize = targetSize, targetSize != naturalSize {
+            switch Int(videoAngleInDegree) {
+            case 90, -270:
+                // 세로 영상의 경우 width/height 뒤집기
+                renderSize = CGSize(width: targetSize.height, height: targetSize.width)
+            default:
+                renderSize = targetSize
+            }
+        }
+
+        // aspect-fit 스케일 계산
+        let scaleX = renderSize.width / naturalSize.width
+        let scaleY = renderSize.height / naturalSize.height
+        let scale = min(scaleX, scaleY)
+
+        // 중앙 정렬을 위한 offset 계산
+        let scaledWidth = naturalSize.width * scale
+        let scaledHeight = naturalSize.height * scale
+        let offsetX = (renderSize.width - scaledWidth) / 2
+        let offsetY = (renderSize.height - scaledHeight) / 2
 
         // 커스텀 compositor를 사용하는 AVMutableVideoComposition 생성
         let composition = AVMutableVideoComposition()
@@ -235,15 +260,19 @@ struct VideoExporter {
         // LayerInstruction 생성
         let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
 
-        // 커스텀 Instruction 생성 (필터와 자막 정보 포함)
-        // filterToApply를 사용 - 이미 필터가 적용된 경우 nil
+        // 커스텀 Instruction 생성 (필터, 자막, 리사이징 정보 포함)
         let instruction = SubtitleVideoCompositionInstruction(
             timeRange: CMTimeRange(start: .zero, duration: duration),
             filter: filterToApply,
             subtitles: editState.subtitles,
             trimStartTime: editState.trimStartTime,
             sourceTrackIDs: [NSNumber(value: videoTrack.trackID)],
-            layerInstructions: [layerInstruction]
+            layerInstructions: [layerInstruction],
+            naturalSize: naturalSize,
+            renderSize: renderSize,
+            scale: scale,
+            offsetX: offsetX,
+            offsetY: offsetY
         )
 
         composition.instructions = [instruction]
