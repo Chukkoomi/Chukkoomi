@@ -149,7 +149,7 @@ struct LoginView: View {
                     HStack(spacing: 16) {
                         // 카카오 로그인
                         Button {
-                            // TODO: 카카오 로그인
+                            viewStore.send(.kakaoLoginButtonTapped)
                         } label: {
                             Image(systemName: "message.fill")
                                 .resizable()
@@ -160,6 +160,7 @@ struct LoginView: View {
                                 .background(Color.yellow)
                                 .clipShape(Circle())
                         }
+                        .disabled(viewStore.isLoading)
 
                         // 애플 로그인
                         Button {
