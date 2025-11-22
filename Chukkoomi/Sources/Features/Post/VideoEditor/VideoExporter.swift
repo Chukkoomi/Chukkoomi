@@ -115,24 +115,29 @@ struct VideoExporter {
         print("📤 [VideoExporter.applyEdits] isFilterAlreadyApplied: \(isFilterAlreadyApplied)")
         print("📤 [VideoExporter.applyEdits] isPortraitFromPHAsset: \(isPortraitFromPHAsset)")
 
-        // 세로 영상일 때 naturalSize 조정 (CompressHelper와 동일한 로직)
+        // naturalSize가 가로 방향인지 확인
+        let isNaturalSizePortrait = naturalSize.width < naturalSize.height
+        print("📤 [VideoExporter.applyEdits] isNaturalSizePortrait: \(isNaturalSizePortrait)")
+
+        // 세로 영상인데 naturalSize가 가로로 나온 경우 swap
         let adjustedNaturalSize: CGSize
-        if isPortraitFromPHAsset {
+        if isPortraitFromPHAsset && !isNaturalSizePortrait {
+            // 세로 영상인데 naturalSize가 가로 → swap
             adjustedNaturalSize = CGSize(width: naturalSize.height, height: naturalSize.width)
-            print("📤 [VideoExporter.applyEdits] 세로 영상 - naturalSize swap: \(adjustedNaturalSize)")
+            print("📤 [VideoExporter.applyEdits] naturalSize swap: \(adjustedNaturalSize)")
         } else {
             adjustedNaturalSize = naturalSize
-            print("📤 [VideoExporter.applyEdits] 가로 영상 - naturalSize 유지: \(adjustedNaturalSize)")
+            print("📤 [VideoExporter.applyEdits] naturalSize 유지: \(adjustedNaturalSize)")
         }
 
-        // 전처리 영상을 사용하는 경우, 이미 리사이징되어 있으므로 adjustedNaturalSize를 그대로 사용
+        // 목표 크기 계산 (조정된 naturalSize 기준)
         let targetSize: CGSize
         if isFilterAlreadyApplied {
             // 전처리 영상은 이미 리사이징되어 있음
             targetSize = adjustedNaturalSize
             print("📤 [VideoExporter.applyEdits] 전처리 영상 - targetSize = adjustedNaturalSize: \(targetSize)")
         } else {
-            // 새로 처리하는 경우 목표 크기 계산 (조정된 naturalSize 기준)
+            // 새로 처리하는 경우 목표 크기 계산
             targetSize = CompressHelper.resizedSizeForiPhoneMax(
                 originalWidth: adjustedNaturalSize.width,
                 originalHeight: adjustedNaturalSize.height
@@ -165,7 +170,7 @@ struct VideoExporter {
                 targetSize: targetSize,
                 isPortraitFromPHAsset: isPortraitFromPHAsset
             )
-        } else if targetSize != naturalSize {
+        } else if targetSize != adjustedNaturalSize {
             // 필터도 자막도 없지만 리사이즈가 필요한 경우
             videoComposition = await CompressHelper.createResizeVideoComposition(
                 for: trimmedAsset,
@@ -251,50 +256,58 @@ struct VideoExporter {
         print("💬 [VideoExporter.applySubtitles] ====== 자막 적용 시작 ======")
         print("💬 [VideoExporter.applySubtitles] 원본 naturalSize: \(naturalSize)")
         print("💬 [VideoExporter.applySubtitles] isPortraitFromPHAsset: \(isPortraitFromPHAsset)")
+        print("💬 [VideoExporter.applySubtitles] targetSize 파라미터: \(targetSize ?? .zero)")
 
-        // 세로 영상일 때 naturalSize 조정
+        // naturalSize가 가로 방향인지 확인
+        let isNaturalSizePortrait = naturalSize.width < naturalSize.height
+        print("💬 [VideoExporter.applySubtitles] isNaturalSizePortrait: \(isNaturalSizePortrait)")
+
+        // 세로 영상인데 naturalSize가 가로로 나온 경우 swap
         let adjustedNaturalSize: CGSize
-        if isPortraitFromPHAsset {
+        if isPortraitFromPHAsset && !isNaturalSizePortrait {
             adjustedNaturalSize = CGSize(width: naturalSize.height, height: naturalSize.width)
-            print("💬 [VideoExporter.applySubtitles] 세로 영상 - naturalSize swap: \(adjustedNaturalSize)")
+            print("💬 [VideoExporter.applySubtitles] naturalSize swap: \(adjustedNaturalSize)")
         } else {
             adjustedNaturalSize = naturalSize
+            print("💬 [VideoExporter.applySubtitles] naturalSize 유지: \(adjustedNaturalSize)")
         }
 
         // renderSize 계산
         let renderSize = targetSize ?? adjustedNaturalSize
         print("💬 [VideoExporter.applySubtitles] renderSize: \(renderSize)")
 
-        // 세로 영상일 때 강제로 90도 회전 transform 적용
+        // 세로 영상인데 naturalSize가 가로였으면 90도 회전 필요
         let correctedTransform: CGAffineTransform
-        if isPortraitFromPHAsset {
+        if isPortraitFromPHAsset && !isNaturalSizePortrait {
             correctedTransform = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 0, ty: 0)
-            print("💬 [VideoExporter.applySubtitles] ✅ 세로 영상 - 90도 회전 transform 강제 적용")
+            print("💬 [VideoExporter.applySubtitles] ✅ 세로 영상 - 90도 회전 transform 적용")
         } else {
             correctedTransform = preferredTransform ?? .identity
-            print("💬 [VideoExporter.applySubtitles] 가로 영상 - 원본 transform 사용")
+            print("💬 [VideoExporter.applySubtitles] 원본 transform 사용")
         }
         print("💬 [VideoExporter.applySubtitles] ====== 자막 적용 종료 ======")
 
 
-        // aspect-fit 스케일 계산 (원본 naturalSize 기준)
-        let scaleX = renderSize.width / naturalSize.width
-        let scaleY = renderSize.height / naturalSize.height
+        // aspect-fit 스케일 계산
+        let scaleX = renderSize.width / adjustedNaturalSize.width
+        let scaleY = renderSize.height / adjustedNaturalSize.height
         let scale = min(scaleX, scaleY)
-        print("💬 [VideoExporter.applySubtitles] scale: \(scale)")
+        print("💬 [VideoExporter.applySubtitles] scale: \(scale) (scaleX: \(scaleX), scaleY: \(scaleY))")
 
-        // 중앙 정렬을 위한 offset 계산
+        // 중앙 정렬을 위한 offset 계산 (원본 naturalSize 기준)
         let scaledWidth = naturalSize.width * scale
         let scaledHeight = naturalSize.height * scale
+        print("💬 [VideoExporter.applySubtitles] scaledWidth: \(scaledWidth), scaledHeight: \(scaledHeight)")
+
         let offsetX: CGFloat
         let offsetY: CGFloat
 
-        if isPortraitFromPHAsset {
-            // 세로 영상: 90도 회전 후 중앙 정렬
+        if isPortraitFromPHAsset && !isNaturalSizePortrait {
+            // 세로 영상이고 회전 필요한 경우: 90도 회전 후 중앙 정렬
             offsetX = (renderSize.width - scaledHeight) / 2
             offsetY = (renderSize.height - scaledWidth) / 2
         } else {
-            // 가로 영상: 일반 중앙 정렬
+            // 가로 영상 또는 회전 불필요: 일반 중앙 정렬
             offsetX = (renderSize.width - scaledWidth) / 2
             offsetY = (renderSize.height - scaledHeight) / 2
         }

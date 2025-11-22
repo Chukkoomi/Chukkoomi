@@ -60,50 +60,58 @@ struct VideoFilterManager {
         print("🎬 [VideoFilterManager] ====== 필터 적용 시작 ======")
         print("🎬 [VideoFilterManager] 원본 naturalSize: \(naturalSize)")
         print("🎬 [VideoFilterManager] isPortraitFromPHAsset: \(isPortraitFromPHAsset)")
+        print("🎬 [VideoFilterManager] targetSize 파라미터: \(targetSize ?? .zero)")
 
-        // 세로 영상일 때 naturalSize 조정
+        // naturalSize가 가로 방향인지 확인
+        let isNaturalSizePortrait = naturalSize.width < naturalSize.height
+        print("🎬 [VideoFilterManager] isNaturalSizePortrait: \(isNaturalSizePortrait)")
+
+        // 세로 영상인데 naturalSize가 가로로 나온 경우 swap
         let adjustedNaturalSize: CGSize
-        if isPortraitFromPHAsset {
+        if isPortraitFromPHAsset && !isNaturalSizePortrait {
             adjustedNaturalSize = CGSize(width: naturalSize.height, height: naturalSize.width)
-            print("🎬 [VideoFilterManager] 세로 영상 - naturalSize swap: \(adjustedNaturalSize)")
+            print("🎬 [VideoFilterManager] naturalSize swap: \(adjustedNaturalSize)")
         } else {
             adjustedNaturalSize = naturalSize
+            print("🎬 [VideoFilterManager] naturalSize 유지: \(adjustedNaturalSize)")
         }
 
         // renderSize 계산
         let renderSize = targetSize ?? adjustedNaturalSize
         print("🎬 [VideoFilterManager] renderSize: \(renderSize)")
 
-        // 세로 영상일 때 강제로 90도 회전 transform 적용
+        // 세로 영상인데 naturalSize가 가로였으면 90도 회전 필요
         let correctedTransform: CGAffineTransform
-        if isPortraitFromPHAsset {
+        if isPortraitFromPHAsset && !isNaturalSizePortrait {
             correctedTransform = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 0, ty: 0)
-            print("🎬 [VideoFilterManager] ✅ 세로 영상 - 90도 회전 transform 강제 적용")
+            print("🎬 [VideoFilterManager] ✅ 세로 영상 - 90도 회전 transform 적용")
         } else {
             correctedTransform = preferredTransform ?? .identity
-            print("🎬 [VideoFilterManager] 가로 영상 - 원본 transform 사용")
+            print("🎬 [VideoFilterManager] 원본 transform 사용")
         }
         print("🎬 [VideoFilterManager] ====== 필터 적용 종료 ======")
 
 
-        // aspect-fit 스케일 계산 (원본 naturalSize 기준)
-        let scaleX = renderSize.width / naturalSize.width
-        let scaleY = renderSize.height / naturalSize.height
+        // aspect-fit 스케일 계산
+        let scaleX = renderSize.width / adjustedNaturalSize.width
+        let scaleY = renderSize.height / adjustedNaturalSize.height
         let scale = min(scaleX, scaleY)
-        print("🎬 [VideoFilterManager] scale: \(scale)")
+        print("🎬 [VideoFilterManager] scale: \(scale) (scaleX: \(scaleX), scaleY: \(scaleY))")
 
-        // 중앙 정렬을 위한 offset 계산
+        // 중앙 정렬을 위한 offset 계산 (원본 naturalSize 기준)
         let scaledWidth = naturalSize.width * scale
         let scaledHeight = naturalSize.height * scale
+        print("🎬 [VideoFilterManager] scaledWidth: \(scaledWidth), scaledHeight: \(scaledHeight)")
+
         let offsetX: CGFloat
         let offsetY: CGFloat
 
-        if isPortraitFromPHAsset {
-            // 세로 영상: 90도 회전 후 중앙 정렬
+        if isPortraitFromPHAsset && !isNaturalSizePortrait {
+            // 세로 영상이고 회전 필요한 경우: 90도 회전 후 중앙 정렬
             offsetX = (renderSize.width - scaledHeight) / 2
             offsetY = (renderSize.height - scaledWidth) / 2
         } else {
-            // 가로 영상: 일반 중앙 정렬
+            // 가로 영상 또는 회전 불필요: 일반 중앙 정렬
             offsetX = (renderSize.width - scaledWidth) / 2
             offsetY = (renderSize.height - scaledHeight) / 2
         }
