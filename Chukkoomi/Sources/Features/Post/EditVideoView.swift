@@ -27,6 +27,7 @@ struct EditVideoView: View {
                     selectedFilter: viewStore.editState.selectedFilter,
                     onTimeUpdate: { time in viewStore.send(.updateCurrentTime(time)) },
                     onDurationUpdate: { duration in viewStore.send(.updateDuration(duration)) },
+                    onVideoSizeUpdate: { size in viewStore.send(.updateVideoDisplaySize(size)) },
                     onSeekCompleted: { viewStore.send(.seekCompleted) },
                     onFilterApplied: { viewStore.send(.filterApplied) },
                     onPlaybackEnded: { viewStore.send(.playbackEnded) }
@@ -37,7 +38,8 @@ struct EditVideoView: View {
                     // 자막 오버레이
                     SubtitleOverlayView(
                         currentTime: viewStore.currentTime,
-                        subtitles: viewStore.editState.subtitles
+                        subtitles: viewStore.editState.subtitles,
+                        videoDisplaySize: viewStore.videoDisplaySize
                     )
                 }
                 .overlay {
@@ -149,6 +151,7 @@ private struct CustomVideoPlayerView: UIViewRepresentable {
     let selectedFilter: VideoFilter?
     let onTimeUpdate: (Double) -> Void
     let onDurationUpdate: (Double) -> Void
+    let onVideoSizeUpdate: (CGSize) -> Void
     let onSeekCompleted: () -> Void
     let onFilterApplied: () -> Void
     let onPlaybackEnded: () -> Void
@@ -211,6 +214,7 @@ private struct CustomVideoPlayerView: UIViewRepresentable {
         Coordinator(
             onTimeUpdate: onTimeUpdate,
             onDurationUpdate: onDurationUpdate,
+            onVideoSizeUpdate: onVideoSizeUpdate,
             onPlaybackEnded: onPlaybackEnded
         )
     }
@@ -224,41 +228,47 @@ private struct CustomVideoPlayerView: UIViewRepresentable {
         var currentPHAsset: PHAsset?  // 현재 로드된 PHAsset 저장
         var lastAppliedFilter: VideoFilter?
         var currentPreProcessedURL: URL?  // 현재 로드된 전처리 비디오 URL
+        var containerView: UIView?  // 비디오 크기 계산용 컨테이너
         let onTimeUpdate: (Double) -> Void
         let onDurationUpdate: (Double) -> Void
+        let onVideoSizeUpdate: (CGSize) -> Void
         let onPlaybackEnded: () -> Void
-        
+
         init(
             onTimeUpdate: @escaping (Double) -> Void,
             onDurationUpdate: @escaping (Double) -> Void,
+            onVideoSizeUpdate: @escaping (CGSize) -> Void,
             onPlaybackEnded: @escaping () -> Void
         ) {
             self.onTimeUpdate = onTimeUpdate
             self.onDurationUpdate = onDurationUpdate
+            self.onVideoSizeUpdate = onVideoSizeUpdate
             self.onPlaybackEnded = onPlaybackEnded
         }
         
         func loadVideo(for asset: PHAsset, in view: UIView) {
             currentPreProcessedURL = nil  // PHAsset 로드 시 전처리 URL 초기화
             currentPHAsset = asset  // PHAsset 저장
-            
+            containerView = view  // 컨테이너 저장
+
             let options = PHVideoRequestOptions()
             options.isNetworkAccessAllowed = true
             options.deliveryMode = .highQualityFormat
-            
+
             PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { [weak self] avAsset, _, _ in
                 guard let self, let avAsset else { return }
-                
+
                 DispatchQueue.main.async {
                     self.setupPlayer(with: avAsset, in: view)
                 }
             }
         }
-        
+
         func loadVideo(from url: URL, in view: UIView) {
             currentPreProcessedURL = url  // 전처리 URL 저장
+            containerView = view  // 컨테이너 저장
             // 전처리 영상은 URL에서 로드되므로 PHAsset은 nil (원본 PHAsset 정보는 유지됨)
-            
+
             let avAsset = AVAsset(url: url)
             DispatchQueue.main.async { [weak self] in
                 self?.setupPlayer(with: avAsset, in: view)
@@ -277,24 +287,26 @@ private struct CustomVideoPlayerView: UIViewRepresentable {
             }
             player?.pause()
             playerLayer?.removeFromSuperlayer()
-            
+
             // 새 플레이어 설정
             currentAVAsset = avAsset
             let playerItem = AVPlayerItem(asset: avAsset)
-            
+
             player = AVPlayer(playerItem: playerItem)
             player?.actionAtItemEnd = .pause
             playerLayer = AVPlayerLayer(player: player)
             playerLayer?.frame = view.bounds
             playerLayer?.videoGravity = .resizeAspect
-            
+
             if let playerLayer = playerLayer {
                 view.layer.addSublayer(playerLayer)
             }
-            
-            // Duration 업데이트 및 경계 옵저버 등록
+
+            // Duration, 비디오 크기 업데이트 및 경계 옵저버 등록
             Task { [weak self] in
                 guard let self else { return }
+
+                // Duration 업데이트
                 if let duration = try? await avAsset.load(.duration) {
                     let durationSeconds = duration.seconds
                     if durationSeconds.isFinite {
@@ -302,6 +314,30 @@ private struct CustomVideoPlayerView: UIViewRepresentable {
                             self.onDurationUpdate(durationSeconds)
                             self.installBoundaryObserver(at: duration)
                         }
+                    }
+                }
+
+                // 비디오 크기 계산 및 업데이트
+                if let videoTrack = try? await avAsset.loadTracks(withMediaType: .video).first,
+                   let naturalSize = try? await videoTrack.load(.naturalSize),
+                   let preferredTransform = try? await videoTrack.load(.preferredTransform),
+                   let containerView = self.containerView {
+
+                    // preferredTransform 적용한 실제 비디오 크기
+                    let isRotated = preferredTransform.b != 0 || preferredTransform.c != 0
+                    let videoSize = isRotated
+                        ? CGSize(width: naturalSize.height, height: naturalSize.width)
+                        : naturalSize
+
+                    // 컨테이너 크기 내에서 aspect-fit으로 표시되는 실제 크기 계산
+                    let containerSize = containerView.bounds.size
+                    let displaySize = self.calculateAspectFitSize(
+                        videoSize: videoSize,
+                        containerSize: containerSize
+                    )
+
+                    await MainActor.run {
+                        self.onVideoSizeUpdate(displaySize)
                     }
                 }
             }
@@ -421,6 +457,29 @@ private struct CustomVideoPlayerView: UIViewRepresentable {
             }
         }
         
+        private func calculateAspectFitSize(videoSize: CGSize, containerSize: CGSize) -> CGSize {
+            guard videoSize.width > 0 && videoSize.height > 0 else {
+                return containerSize
+            }
+
+            let videoAspect = videoSize.width / videoSize.height
+            let containerAspect = containerSize.width / containerSize.height
+
+            if videoAspect > containerAspect {
+                // 비디오가 더 넓음 - 너비에 맞춤
+                return CGSize(
+                    width: containerSize.width,
+                    height: containerSize.width / videoAspect
+                )
+            } else {
+                // 비디오가 더 높음 - 높이에 맞춤
+                return CGSize(
+                    width: containerSize.height * videoAspect,
+                    height: containerSize.height
+                )
+            }
+        }
+
         deinit {
             if let timeObserver = timeObserver {
                 player?.removeTimeObserver(timeObserver)
@@ -437,33 +496,47 @@ private struct CustomVideoPlayerView: UIViewRepresentable {
 private struct SubtitleOverlayView: View {
     let currentTime: Double
     let subtitles: [EditVideoFeature.Subtitle]
-    
+    let videoDisplaySize: CGSize
+
     var body: some View {
-        VStack {
-            Spacer()
-            
+        GeometryReader { geometry in
             // 현재 시간에 표시할 자막 찾기
             if let currentSubtitle = subtitles.first(where: { subtitle in
                 currentTime >= subtitle.startTime && currentTime <= subtitle.endTime
-            }) {
+            }), videoDisplaySize.width > 0 && videoDisplaySize.height > 0 {
+
+                // 실제 영상과 동일한 비율로 자막 크기 계산
+                // VideoCompositorWithSubtitles와 동일하게: width * 0.06
+                let fontSize = videoDisplaySize.width * 0.06
+                let outlineOffset: CGFloat = 2.0
+
+                // 컨테이너 내에서 비디오가 표시되는 영역 계산 (중앙 정렬)
+                let containerSize = geometry.size
+                let videoOriginX = (containerSize.width - videoDisplaySize.width) / 2
+                let videoOriginY = (containerSize.height - videoDisplaySize.height) / 2
+
                 ZStack {
                     // 검정 테두리 (여러 겹)
                     ForEach(0..<8) { i in
                         Text(currentSubtitle.text)
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.system(size: fontSize, weight: .bold))
                             .foregroundStyle(.black)
                             .offset(
-                                x: CGFloat(i % 3 - 1) * 2,
-                                y: CGFloat(i / 3 - 1) * 2
+                                x: CGFloat(i % 3 - 1) * outlineOffset,
+                                y: CGFloat(i / 3 - 1) * outlineOffset
                             )
                     }
-                    
+
                     // 흰색 텍스트
                     Text(currentSubtitle.text)
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(size: fontSize, weight: .bold))
                         .foregroundStyle(.white)
                 }
-                .padding(.bottom, 12)
+                .frame(width: videoDisplaySize.width)
+                .position(
+                    x: videoOriginX + videoDisplaySize.width / 2,
+                    y: videoOriginY + videoDisplaySize.height - videoDisplaySize.height * 0.05 - fontSize / 2
+                )
             }
         }
     }

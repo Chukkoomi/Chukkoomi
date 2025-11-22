@@ -32,6 +32,9 @@ struct EditVideoFeature {
         // AnimeGAN 전처리된 비디오 (무거운 필터는 미리 처리)
         var preProcessedVideoURL: URL? = nil
 
+        // 비디오 표시 크기 (자막 크기 계산용)
+        var videoDisplaySize: CGSize = .zero
+
         // 내보내기 상태
         var isExporting: Bool = false
         var exportProgress: Double = 0.0
@@ -89,6 +92,7 @@ struct EditVideoFeature {
         case seekCompleted
         case updateCurrentTime(Double)
         case updateDuration(Double)
+        case updateVideoDisplaySize(CGSize)
         case updateTrimStartTime(Double)
         case updateTrimEndTime(Double)
         case filterSelected(VideoFilter)
@@ -161,6 +165,10 @@ struct EditVideoFeature {
                 state.editState.trimEndTime = duration
                 return .none
 
+            case .updateVideoDisplaySize(let size):
+                state.videoDisplaySize = size
+                return .none
+
             case .updateTrimStartTime(let time):
                 state.editState.trimStartTime = max(0, min(time, state.editState.trimEndTime - 0.1))
                 return .none
@@ -225,7 +233,6 @@ struct EditVideoFeature {
             case .preProcessFailed(let error):
                 state.isApplyingFilter = false
                 state.editState.selectedFilter = nil  // 필터 선택 해제
-                print("❌ 필터 전처리 실패: \(error)")
                 return .none
 
             case .completeButtonTapped:
@@ -376,7 +383,6 @@ struct EditVideoFeature {
                 state.pendingSubtitleStartTime = nil
                 state.pendingSubtitleEndTime = nil
 
-                print("✅ 자막 추가: \(startTime)s ~ \(endTime)s, 텍스트: \(newSubtitle.text)")
                 return .none
 
             case .cancelSubtitleInput:

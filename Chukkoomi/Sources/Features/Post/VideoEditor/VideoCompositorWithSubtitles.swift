@@ -17,21 +17,14 @@ final class SubtitleVideoCompositionInstruction: NSObject, AVVideoCompositionIns
     var containsTweening: Bool = false
     var requiredSourceTrackIDs: [NSValue]?
     var passthroughTrackID: CMPersistentTrackID = kCMPersistentTrackID_Invalid
-    
+
     let filter: VideoFilter?
     let subtitles: [EditVideoFeature.Subtitle]
     let trimStartTime: Double
     let layerInstructions: [AVVideoCompositionLayerInstruction]
-    
-    // 리사이징 정보
-    let naturalSize: CGSize
+    let preferredTransform: CGAffineTransform
     let renderSize: CGSize
-    let scale: CGFloat
-    let offsetX: CGFloat
-    let offsetY: CGFloat
-    let correctedTransform: CGAffineTransform
-    let isPortraitFromPHAsset: Bool
-    
+
     init(
         timeRange: CMTimeRange,
         filter: VideoFilter?,
@@ -39,13 +32,8 @@ final class SubtitleVideoCompositionInstruction: NSObject, AVVideoCompositionIns
         trimStartTime: Double,
         sourceTrackIDs: [NSValue],
         layerInstructions: [AVVideoCompositionLayerInstruction],
-        naturalSize: CGSize,
-        renderSize: CGSize,
-        scale: CGFloat,
-        offsetX: CGFloat,
-        offsetY: CGFloat,
-        correctedTransform: CGAffineTransform,
-        isPortraitFromPHAsset: Bool
+        preferredTransform: CGAffineTransform,
+        renderSize: CGSize
     ) {
         self.timeRange = timeRange
         self.filter = filter
@@ -53,13 +41,8 @@ final class SubtitleVideoCompositionInstruction: NSObject, AVVideoCompositionIns
         self.trimStartTime = trimStartTime
         self.requiredSourceTrackIDs = sourceTrackIDs
         self.layerInstructions = layerInstructions
-        self.naturalSize = naturalSize
+        self.preferredTransform = preferredTransform
         self.renderSize = renderSize
-        self.scale = scale
-        self.offsetX = offsetX
-        self.offsetY = offsetY
-        self.correctedTransform = correctedTransform
-        self.isPortraitFromPHAsset = isPortraitFromPHAsset
         super.init()
     }
 }
@@ -145,123 +128,69 @@ final class VideoCompositorWithSubtitles: NSObject, AVVideoCompositing {
             // CIImage로 변환
             var outputImage = CIImage(cvPixelBuffer: sourcePixelBuffer)
 
-            print("🎞️ [VideoCompositor] ====== 프레임 처리 시작 ======")
-            print("🎞️ [VideoCompositor] 원본 extent: \(outputImage.extent)")
-            print("🎞️ [VideoCompositor] instruction.renderSize: \(instruction.renderSize)")
-            print("🎞️ [VideoCompositor] instruction.correctedTransform: \(instruction.correctedTransform)")
+            // 1. 원본 preferredTransform 적용 (raw 픽셀을 실제 방향으로 변환)
+            if instruction.preferredTransform != .identity {
+                outputImage = outputImage.transformed(by: instruction.preferredTransform)
 
-            // 1. 필터 적용
-            if let filter = instruction.filter {
-                outputImage = self.applyFilter(filter, to: outputImage)
-            }
-
-            // 2. 원본 비디오의 preferredTransform을 먼저 적용 (raw 픽셀을 실제 방향으로)
-            if instruction.correctedTransform != .identity {
-                print("🎞️ [VideoCompositor] 원본 preferredTransform 적용 전 extent: \(outputImage.extent)")
-                outputImage = outputImage.transformed(by: instruction.correctedTransform)
-                print("🎞️ [VideoCompositor] 원본 preferredTransform 적용 후 extent: \(outputImage.extent)")
-
-                // transform 후 extent 정규화
-                if outputImage.extent.origin.x != 0 || outputImage.extent.origin.y != 0 {
+                // extent 정규화 (음수 좌표 제거)
+                if outputImage.extent.origin != .zero {
                     let normalizeTransform = CGAffineTransform(
                         translationX: -outputImage.extent.origin.x,
                         y: -outputImage.extent.origin.y
                     )
                     outputImage = outputImage.transformed(by: normalizeTransform)
-                    print("🎞️ [VideoCompositor] preferredTransform 후 normalized extent: \(outputImage.extent)")
+                }
+
+                // 세로 영상 + 필터 적용 시 180도 추가 회전 (버그 workaround)
+                if instruction.filter != nil {
+                    let isPortrait = outputImage.extent.height > outputImage.extent.width
+                    if isPortrait {
+                        let rotate180 = CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: outputImage.extent.width, ty: outputImage.extent.height)
+                        outputImage = outputImage.transformed(by: rotate180)
+
+                        // 정규화
+                        if outputImage.extent.origin != .zero {
+                            let normalizeTransform = CGAffineTransform(
+                                translationX: -outputImage.extent.origin.x,
+                                y: -outputImage.extent.origin.y
+                            )
+                            outputImage = outputImage.transformed(by: normalizeTransform)
+                        }
+                    }
                 }
             }
 
-            // 3. 실제 extent 기준으로 방향 확인
-            let sourceExtent = outputImage.extent
-            let isSourcePortrait = sourceExtent.width < sourceExtent.height
-            let isRenderPortrait = instruction.renderSize.width < instruction.renderSize.height
-            let actualNeedsRotation = isSourcePortrait != isRenderPortrait
+            // 2. targetSize로 aspect-fit 리사이징
+            let sourceSize = outputImage.extent.size
+            let scaleX = instruction.renderSize.width / sourceSize.width
+            let scaleY = instruction.renderSize.height / sourceSize.height
+            let scale = min(scaleX, scaleY)
 
-            print("🎞️ [VideoCompositor] 실제 sourceExtent (transform 후): \(sourceExtent)")
-            print("🎞️ [VideoCompositor] isSourcePortrait: \(isSourcePortrait)")
-            print("🎞️ [VideoCompositor] isRenderPortrait: \(isRenderPortrait)")
-            print("🎞️ [VideoCompositor] actualNeedsRotation: \(actualNeedsRotation)")
+            let scaleTransform = CGAffineTransform(scaleX: scale, y: scale)
+            outputImage = outputImage.transformed(by: scaleTransform)
 
-            // 3. 리사이징 및 회전 (extent 기준으로 판단)
-            let actualScale: CGFloat
-            let actualTransform: CGAffineTransform
+            // 3. 중앙 정렬
+            let scaledWidth = sourceSize.width * scale
+            let scaledHeight = sourceSize.height * scale
+            let offsetX = (instruction.renderSize.width - scaledWidth) / 2
+            let offsetY = (instruction.renderSize.height - scaledHeight) / 2
 
-            if actualNeedsRotation {
-                // 회전 필요: extent 기준으로 scale 계산
-                let scaleX = instruction.renderSize.width / sourceExtent.height
-                let scaleY = instruction.renderSize.height / sourceExtent.width
-                actualScale = min(scaleX, scaleY)
-                actualTransform = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 0, ty: 0)
-                print("🎞️ [VideoCompositor] 회전 O - scale: \(actualScale)")
-            } else {
-                // 회전 불필요
-                let scaleX = instruction.renderSize.width / sourceExtent.width
-                let scaleY = instruction.renderSize.height / sourceExtent.height
-                actualScale = min(scaleX, scaleY)
-                actualTransform = .identity
-                print("🎞️ [VideoCompositor] 회전 X - scale: \(actualScale)")
-            }
-
-            let scaleTransform = CGAffineTransform(scaleX: actualScale, y: actualScale)
-            print("🎞️ [VideoCompositor] scaleTransform: \(scaleTransform)")
-            print("🎞️ [VideoCompositor] actualTransform (회전): \(actualTransform)")
-
-            let transformWithRotation = scaleTransform.concatenating(actualTransform)
-            print("🎞️ [VideoCompositor] 최종 transform (scale + rotation): \(transformWithRotation)")
-            print("🎞️ [VideoCompositor] transform 적용 전 extent: \(outputImage.extent)")
-
-            outputImage = outputImage.transformed(by: transformWithRotation)
-            print("🎞️ [VideoCompositor] transform 적용 후 extent: \(outputImage.extent)")
-
-            // 4. transform 후 extent 정규화 (음수 좌표를 원점으로)
-            let transformedExtent = outputImage.extent
-            print("🎞️ [VideoCompositor] transformedExtent: \(transformedExtent)")
-
-            if transformedExtent.origin.x != 0 || transformedExtent.origin.y != 0 {
-                let normalizeTransform = CGAffineTransform(
-                    translationX: -transformedExtent.origin.x,
-                    y: -transformedExtent.origin.y
-                )
-                outputImage = outputImage.transformed(by: normalizeTransform)
-                print("🎞️ [VideoCompositor] normalized extent: \(outputImage.extent)")
-            }
-
-            // 5. 중앙 정렬을 위한 offset 계산 (extent 기준)
-            let scaledWidth = sourceExtent.width * actualScale
-            let scaledHeight = sourceExtent.height * actualScale
-
-            let actualOffsetX: CGFloat
-            let actualOffsetY: CGFloat
-
-            if actualNeedsRotation {
-                // 회전하는 경우: 90도 회전 후 중앙 정렬
-                actualOffsetX = (instruction.renderSize.width - scaledHeight) / 2
-                actualOffsetY = (instruction.renderSize.height - scaledWidth) / 2
-            } else {
-                // 회전 불필요: 일반 중앙 정렬
-                actualOffsetX = (instruction.renderSize.width - scaledWidth) / 2
-                actualOffsetY = (instruction.renderSize.height - scaledHeight) / 2
-            }
-
-            print("🎞️ [VideoCompositor] actualOffsetX: \(actualOffsetX), actualOffsetY: \(actualOffsetY)")
-
-            let translateTransform = CGAffineTransform(translationX: actualOffsetX, y: actualOffsetY)
+            let translateTransform = CGAffineTransform(translationX: offsetX, y: offsetY)
             outputImage = outputImage.transformed(by: translateTransform)
-            print("🎞️ [VideoCompositor] after translate extent: \(outputImage.extent)")
 
-            // 5. 검정 배경 생성 (빈 공간을 채우기 위해)
+            // 4. 검정 배경 위에 합성
             let background = CIImage(color: CIColor.black).cropped(to: CGRect(origin: .zero, size: instruction.renderSize))
-
-            // 6. 이미지를 배경 위에 합성 (outputImage의 extent origin에 따라 위치 결정)
             outputImage = outputImage.composited(over: background)
-            print("🎞️ [VideoCompositor] composited extent: \(outputImage.extent)")
 
-            // 7. renderSize 영역으로 crop
+            // 5. renderSize로 crop
             outputImage = outputImage.cropped(to: CGRect(origin: .zero, size: instruction.renderSize))
-            print("🎞️ [VideoCompositor] cropped extent: \(outputImage.extent)")
 
-            // 8. 자막 적용
+            // 6. 필터 적용 (리사이즈 후 작은 이미지에 적용 - 효율적)
+            if let filter = instruction.filter {
+                outputImage = self.applyFilter(filter, to: outputImage)
+            }
+
+            // 7. 자막 적용
             let currentTime = CMTimeGetSeconds(asyncVideoCompositionRequest.compositionTime)
             let adjustedTime = currentTime + instruction.trimStartTime
 
@@ -270,16 +199,11 @@ final class VideoCompositorWithSubtitles: NSObject, AVVideoCompositing {
                     text: subtitle.text,
                     videoSize: instruction.renderSize
                 ) {
-                    // 자막 이미지를 비디오 프레임 위에 합성
                     outputImage = subtitleImage.composited(over: outputImage)
-                    print("🎞️ [VideoCompositor] 자막 합성 후 extent: \(outputImage.extent)")
                 }
             }
 
-            print("🎞️ [VideoCompositor] 최종 extent: \(outputImage.extent)")
-            print("🎞️ [VideoCompositor] ====== 프레임 처리 완료 ======")
-
-            // 9. 렌더링 (Core Image Y-up → 비디오 버퍼 Y-down 보정)
+            // 8. 렌더링
             guard let renderPixelBuffer = asyncVideoCompositionRequest.renderContext.newPixelBuffer() else {
                 asyncVideoCompositionRequest.finish(with: NSError(
                     domain: "VideoCompositor",

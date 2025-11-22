@@ -49,21 +49,15 @@ struct VideoExporter {
             avAsset = try await loadAVAsset(from: asset)
         }
 
-        // PHAsset의 실제 픽셀 크기로 세로 영상 판단 (더 정확함)
-        let isPortraitFromPHAsset = asset.pixelWidth < asset.pixelHeight
-        print("🎥 [VideoExporter.export] PHAsset 정보:")
-        print("🎥 [VideoExporter.export] pixelWidth: \(asset.pixelWidth)")
-        print("🎥 [VideoExporter.export] pixelHeight: \(asset.pixelHeight)")
-        print("🎥 [VideoExporter.export] isPortrait (PHAsset): \(isPortraitFromPHAsset)")
-
         // 미리 처리된 영상을 사용하는 경우, 필터는 이미 적용되어 있음
         let isFilterAlreadyApplied = editState.selectedFilter == .animeGANHayao && preProcessedVideoURL != nil
+
         let (composition, videoComposition) = try await applyEdits(
             to: avAsset,
             editState: editState,
-            isFilterAlreadyApplied: isFilterAlreadyApplied,
-            isPortraitFromPHAsset: isPortraitFromPHAsset
+            isFilterAlreadyApplied: isFilterAlreadyApplied
         )
+
         let exportedURL = try await exportComposition(
             composition,
             videoComposition: videoComposition,
@@ -93,84 +87,30 @@ struct VideoExporter {
     private func applyEdits(
         to asset: AVAsset,
         editState: EditVideoFeature.EditState,
-        isFilterAlreadyApplied: Bool,
-        isPortraitFromPHAsset: Bool
+        isFilterAlreadyApplied: Bool
     ) async throws -> (AVAsset, AVVideoComposition?) {
         let composition = AVMutableComposition()
 
-        // 1) Trim
+        // 1) Trim만 수행
         let trimmedAsset = try await applyTrim(to: asset, editState: editState, composition: composition)
 
-        // 2) 목표 크기 계산 (Resize)
-        guard let videoTrack = try await trimmedAsset.loadTracks(withMediaType: .video).first else {
-            return (trimmedAsset, nil)
-        }
-        let naturalSize = try await videoTrack.load(.naturalSize)
-        let preferredTransform = try await videoTrack.load(.preferredTransform)
-
-        // 디버깅 로그
-        print("📤 [VideoExporter.applyEdits] ====== 편집 적용 시작 ======")
-        print("📤 [VideoExporter.applyEdits] naturalSize: \(naturalSize)")
-        print("📤 [VideoExporter.applyEdits] preferredTransform: \(preferredTransform)")
-        print("📤 [VideoExporter.applyEdits] isFilterAlreadyApplied: \(isFilterAlreadyApplied)")
-        print("📤 [VideoExporter.applyEdits] isPortraitFromPHAsset: \(isPortraitFromPHAsset)")
-
-        // naturalSize가 가로 방향인지 확인
-        let isNaturalSizePortrait = naturalSize.width < naturalSize.height
-        print("📤 [VideoExporter.applyEdits] isNaturalSizePortrait: \(isNaturalSizePortrait)")
-
-        // 세로 영상인데 naturalSize가 가로로 나온 경우 swap
-        let adjustedNaturalSize: CGSize
-        if isPortraitFromPHAsset && !isNaturalSizePortrait {
-            // 세로 영상인데 naturalSize가 가로 → swap
-            adjustedNaturalSize = CGSize(width: naturalSize.height, height: naturalSize.width)
-            print("📤 [VideoExporter.applyEdits] naturalSize swap: \(adjustedNaturalSize)")
-        } else {
-            adjustedNaturalSize = naturalSize
-            print("📤 [VideoExporter.applyEdits] naturalSize 유지: \(adjustedNaturalSize)")
-        }
-
-        // 목표 크기 계산 (조정된 naturalSize 기준)
-        let targetSize: CGSize
-        if isFilterAlreadyApplied {
-            // 전처리 영상은 이미 리사이징되어 있음
-            targetSize = adjustedNaturalSize
-            print("📤 [VideoExporter.applyEdits] 전처리 영상 - targetSize = adjustedNaturalSize: \(targetSize)")
-        } else {
-            // 새로 처리하는 경우 목표 크기 계산
-            targetSize = CompressHelper.resizedSizeForiPhoneMax(
-                originalWidth: adjustedNaturalSize.width,
-                originalHeight: adjustedNaturalSize.height
-            )
-            print("📤 [VideoExporter.applyEdits] targetSize: \(targetSize)")
-        }
-        print("📤 [VideoExporter.applyEdits] ====== 편집 적용 종료 ======")
-
-
-        // 3) Filter와 Subtitles 처리
+        // 2) 필터, 자막, 리사이즈 처리
         let videoComposition: AVVideoComposition?
 
-        if !editState.subtitles.isEmpty || (editState.selectedFilter != nil && !isFilterAlreadyApplied) {
-            // 자막이 있거나 필터가 있으면: 커스텀 compositor 사용
-            // (자막 없이 필터만 있는 경우도 커스텀 compositor로 처리하여 회전 문제 방지)
+        // AnimeGAN 필터이고 자막이 없고 아직 적용되지 않았으면 VideoFilterManager 사용
+        if editState.selectedFilter == .animeGANHayao && editState.subtitles.isEmpty && !isFilterAlreadyApplied {
+            videoComposition = try await createAnimeGANComposition(for: trimmedAsset)
+        } else if !editState.subtitles.isEmpty || (editState.selectedFilter != nil && !isFilterAlreadyApplied) {
+            // 자막이나 다른 필터가 있으면: 커스텀 compositor 사용
             let filterToApply = isFilterAlreadyApplied ? nil : editState.selectedFilter
-            videoComposition = try await applySubtitles(
-                to: trimmedAsset,
-                editState: editState,
-                filterToApply: filterToApply,
-                targetSize: targetSize,
-                isPortraitFromPHAsset: isPortraitFromPHAsset
-            )
-        } else if targetSize != adjustedNaturalSize {
-            // 필터도 자막도 없지만 리사이즈가 필요한 경우
-            videoComposition = await CompressHelper.createResizeVideoComposition(
+            videoComposition = try await createVideoComposition(
                 for: trimmedAsset,
-                targetSize: targetSize,
-                isPortraitFromPHAsset: isPortraitFromPHAsset
+                editState: editState,
+                filterToApply: filterToApply
             )
         } else {
-            // 필터도 자막도 리사이즈도 필요 없으면: nil
-            videoComposition = nil
+            // 필터도 자막도 없으면: 리사이즈만 수행
+            videoComposition = try await createResizeOnlyComposition(for: trimmedAsset)
         }
 
         return (trimmedAsset, videoComposition)
@@ -193,143 +133,76 @@ struct VideoExporter {
 
         let timeRange = CMTimeRange(start: startTime, end: actualEndTime)
 
-        guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
+        // 비디오 트랙 추가
+        guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first,
+              let compositionVideoTrack = composition.addMutableTrack(
+                withMediaType: .video,
+                preferredTrackID: kCMPersistentTrackID_Invalid
+              ) else {
             return composition
         }
 
-        guard let compositionVideoTrack = composition.addMutableTrack(
-            withMediaType: .video,
-            preferredTrackID: kCMPersistentTrackID_Invalid
-        ) else {
-            return composition
-        }
+        try compositionVideoTrack.insertTimeRange(timeRange, of: videoTrack, at: .zero)
 
-        try compositionVideoTrack.insertTimeRange(
-            timeRange,
-            of: videoTrack,
-            at: .zero
-        )
-
-        // 원본 트랙의 preferredTransform 복사
+        // 원본 preferredTransform 유지 (중요!)
         if let preferredTransform = try? await videoTrack.load(.preferredTransform) {
             compositionVideoTrack.preferredTransform = preferredTransform
-            print("✂️ [VideoExporter.applyTrim] 원본 preferredTransform: \(preferredTransform)")
-            print("✂️ [VideoExporter.applyTrim] composition 트랙에 복사 완료")
         }
-        print("✂️ [VideoExporter.applyTrim] composition 트랙 preferredTransform: \(compositionVideoTrack.preferredTransform)")
 
-        if let audioTrack = try await asset.loadTracks(withMediaType: .audio).first {
-            if let compositionAudioTrack = composition.addMutableTrack(
-                withMediaType: .audio,
-                preferredTrackID: kCMPersistentTrackID_Invalid
-            ) {
-                try? compositionAudioTrack.insertTimeRange(
-                    timeRange,
-                    of: audioTrack,
-                    at: .zero
-                )
-            }
+        // 오디오 트랙 추가 (있으면)
+        if let audioTrack = try await asset.loadTracks(withMediaType: .audio).first,
+           let compositionAudioTrack = composition.addMutableTrack(
+            withMediaType: .audio,
+            preferredTrackID: kCMPersistentTrackID_Invalid
+           ) {
+            try? compositionAudioTrack.insertTimeRange(timeRange, of: audioTrack, at: .zero)
         }
 
         return composition
     }
 
-    private func applySubtitles(
-        to asset: AVAsset,
+    /// 필터, 자막, 리사이즈를 모두 처리하는 videoComposition 생성
+    private func createVideoComposition(
+        for asset: AVAsset,
         editState: EditVideoFeature.EditState,
-        filterToApply: VideoFilter?,
-        targetSize: CGSize? = nil,
-        isPortraitFromPHAsset: Bool
+        filterToApply: VideoFilter?
     ) async throws -> AVVideoComposition {
-        // 비디오 트랙 가져오기
         guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
             throw ExportError.failedToLoadAsset
         }
 
         let naturalSize = try await videoTrack.load(.naturalSize)
         let preferredTransform = try await videoTrack.load(.preferredTransform)
-
-        print("💬 [VideoExporter.applySubtitles] 트랙 정보:")
-        print("💬 [VideoExporter.applySubtitles] 진입 시 트랙 preferredTransform: \(preferredTransform)")
-
-        // 커스텀 compositor가 픽셀 회전을 수행하므로, composition 트랙의 preferredTransform을 identity로 재설정
-        // (이미 회전된 픽셀이므로 추가 회전 방지)
-        if let composition = asset as? AVMutableComposition,
-           let compositionVideoTrack = composition.tracks(withMediaType: .video).first as? AVMutableCompositionTrack {
-            print("💬 [VideoExporter.applySubtitles] composition 트랙 발견 - preferredTransform을 identity로 재설정")
-            print("💬 [VideoExporter.applySubtitles] 재설정 전: \(compositionVideoTrack.preferredTransform)")
-            compositionVideoTrack.preferredTransform = .identity
-            print("💬 [VideoExporter.applySubtitles] 재설정 후: \(compositionVideoTrack.preferredTransform)")
-        } else {
-            print("💬 [VideoExporter.applySubtitles] composition 트랙 아님 - preferredTransform 재설정 스킵")
-        }
         let frameDuration = try await videoTrack.load(.minFrameDuration)
         let duration = try await asset.load(.duration)
 
-        // 디버깅 로그
-        print("💬 [VideoExporter.applySubtitles] ====== 자막 적용 시작 ======")
-        print("💬 [VideoExporter.applySubtitles] 원본 naturalSize: \(naturalSize)")
-        print("💬 [VideoExporter.applySubtitles] isPortraitFromPHAsset: \(isPortraitFromPHAsset)")
-        print("💬 [VideoExporter.applySubtitles] targetSize 파라미터: \(targetSize ?? .zero)")
+        // preferredTransform을 적용한 실제 비디오 크기 계산
+        let videoSize = sizeAfterApplyingTransform(naturalSize: naturalSize, transform: preferredTransform ?? .identity)
 
-        // naturalSize가 가로 방향인지 확인
-        let isNaturalSizePortrait = naturalSize.width < naturalSize.height
-        print("💬 [VideoExporter.applySubtitles] isNaturalSizePortrait: \(isNaturalSizePortrait)")
+        // 목표 크기 계산 (videoSize 기준)
+        let targetSize = CompressHelper.resizedSizeForiPhoneMax(
+            originalWidth: videoSize.width,
+            originalHeight: videoSize.height
+        )
 
-        // 세로 영상인데 naturalSize가 가로로 나온 경우 swap
-        let adjustedNaturalSize: CGSize
-        if isPortraitFromPHAsset && !isNaturalSizePortrait {
-            adjustedNaturalSize = CGSize(width: naturalSize.height, height: naturalSize.width)
-            print("💬 [VideoExporter.applySubtitles] naturalSize swap: \(adjustedNaturalSize)")
-        } else {
-            adjustedNaturalSize = naturalSize
-            print("💬 [VideoExporter.applySubtitles] naturalSize 유지: \(adjustedNaturalSize)")
+        // Composition 트랙의 preferredTransform을 identity로 재설정
+        // (compositor가 이미 회전을 처리하므로 중복 방지)
+        if let composition = asset as? AVMutableComposition,
+           let compositionVideoTrack = composition.tracks(withMediaType: .video).first {
+            compositionVideoTrack.preferredTransform = .identity
         }
 
-        // renderSize 계산
-        let renderSize = targetSize ?? adjustedNaturalSize
-        print("💬 [VideoExporter.applySubtitles] renderSize: \(renderSize)")
-
-        // renderSize 방향 확인
-        let isRenderSizePortrait = renderSize.width < renderSize.height
-        print("💬 [VideoExporter.applySubtitles] isRenderSizePortrait: \(isRenderSizePortrait)")
-
-        // 원본 비디오의 preferredTransform을 그대로 사용
-        // (커스텀 compositor가 이를 먼저 적용하여 raw 픽셀을 실제 방향으로 변환)
-        let correctedTransform = preferredTransform ?? .identity
-        print("💬 [VideoExporter.applySubtitles] 원본 preferredTransform 사용: \(correctedTransform)")
-        print("💬 [VideoExporter.applySubtitles] ====== 자막 적용 종료 ======")
-
-
-        // aspect-fit 스케일 계산 (adjustedNaturalSize 기준 - preferredTransform 적용 후 크기)
-        let scaleX = renderSize.width / adjustedNaturalSize.width
-        let scaleY = renderSize.height / adjustedNaturalSize.height
-        let scale = min(scaleX, scaleY)
-        print("💬 [VideoExporter.applySubtitles] scale: \(scale) (scaleX: \(scaleX), scaleY: \(scaleY))")
-
-        // 중앙 정렬을 위한 offset 계산 (adjustedNaturalSize 기준)
-        let scaledWidth = adjustedNaturalSize.width * scale
-        let scaledHeight = adjustedNaturalSize.height * scale
-        print("💬 [VideoExporter.applySubtitles] scaledWidth: \(scaledWidth), scaledHeight: \(scaledHeight)")
-
-        let offsetX = (renderSize.width - scaledWidth) / 2
-        let offsetY = (renderSize.height - scaledHeight) / 2
-        print("💬 [VideoExporter.applySubtitles] offset: (\(offsetX), \(offsetY))")
-
-        // 커스텀 compositor를 사용하는 AVMutableVideoComposition 생성
-        let composition = AVMutableVideoComposition()
-        composition.frameDuration = frameDuration
-        composition.renderSize = renderSize
-        composition.customVideoCompositorClass = VideoCompositorWithSubtitles.self
+        // AVMutableVideoComposition 생성
+        let videoComposition = AVMutableVideoComposition()
+        videoComposition.frameDuration = frameDuration
+        videoComposition.renderSize = targetSize  // 최종 크기 (세로)
+        videoComposition.customVideoCompositorClass = VideoCompositorWithSubtitles.self
 
         // LayerInstruction 생성
         let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
-
-        // 커스텀 compositor가 픽셀 회전을 수행하므로, 출력 트랙은 추가 회전이 필요 없음
-        // 따라서 identity transform 설정 (이미 회전된 픽셀이므로)
         layerInstruction.setTransform(.identity, at: .zero)
 
-        // 커스텀 Instruction 생성 (필터, 자막, 리사이징 정보 포함)
+        // 커스텀 Instruction 생성
         let instruction = SubtitleVideoCompositionInstruction(
             timeRange: CMTimeRange(start: .zero, duration: duration),
             filter: filterToApply,
@@ -337,18 +210,86 @@ struct VideoExporter {
             trimStartTime: editState.trimStartTime,
             sourceTrackIDs: [NSNumber(value: videoTrack.trackID)],
             layerInstructions: [layerInstruction],
-            naturalSize: naturalSize,
-            renderSize: renderSize,
-            scale: scale,
-            offsetX: offsetX,
-            offsetY: offsetY,
-            correctedTransform: correctedTransform,
-            isPortraitFromPHAsset: isPortraitFromPHAsset
+            preferredTransform: preferredTransform ?? .identity,
+            renderSize: targetSize
         )
 
-        composition.instructions = [instruction]
+        videoComposition.instructions = [instruction]
 
-        return composition
+        return videoComposition
+    }
+
+    /// AnimeGAN 필터를 적용하는 videoComposition 생성 (VideoFilterManager 사용)
+    private func createAnimeGANComposition(for asset: AVAsset) async throws -> AVVideoComposition? {
+        guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
+            return nil
+        }
+
+        let naturalSize = try await videoTrack.load(.naturalSize)
+        let preferredTransform = try await videoTrack.load(.preferredTransform)
+
+        // preferredTransform을 적용한 실제 비디오 크기
+        let videoSize = sizeAfterApplyingTransform(naturalSize: naturalSize, transform: preferredTransform ?? .identity)
+
+        // 목표 크기 계산
+        let targetSize = CompressHelper.resizedSizeForiPhoneMax(
+            originalWidth: videoSize.width,
+            originalHeight: videoSize.height
+        )
+
+        // portrait 여부 확인
+        let isPortrait = videoSize.height > videoSize.width
+
+        // VideoFilterManager를 사용하여 AnimeGAN 필터 적용
+        return await VideoFilterManager.createVideoComposition(
+            for: asset,
+            filter: .animeGANHayao,
+            targetSize: targetSize,
+            isPortraitFromPHAsset: isPortrait
+        )
+    }
+
+    /// 리사이즈만 수행하는 videoComposition 생성
+    private func createResizeOnlyComposition(for asset: AVAsset) async throws -> AVVideoComposition? {
+        guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
+            return nil
+        }
+
+        let naturalSize = try await videoTrack.load(.naturalSize)
+        let preferredTransform = try await videoTrack.load(.preferredTransform)
+
+        // preferredTransform을 적용한 실제 비디오 크기
+        let videoSize = sizeAfterApplyingTransform(naturalSize: naturalSize, transform: preferredTransform ?? .identity)
+
+        // 목표 크기 계산
+        let targetSize = CompressHelper.resizedSizeForiPhoneMax(
+            originalWidth: videoSize.width,
+            originalHeight: videoSize.height
+        )
+
+        // 리사이즈가 필요 없으면 nil 반환
+        if targetSize == videoSize {
+            return nil
+        }
+
+        // CompressHelper로 리사이즈만 수행
+        return await CompressHelper.createResizeVideoComposition(
+            for: asset,
+            targetSize: targetSize
+        )
+    }
+
+    /// preferredTransform을 적용한 실제 비디오 크기 계산
+    private func sizeAfterApplyingTransform(naturalSize: CGSize, transform: CGAffineTransform) -> CGSize {
+        // 90도 또는 270도 회전 여부 확인
+        let isRotated90Degrees = transform.b != 0 || transform.c != 0
+
+        if isRotated90Degrees {
+            // 회전되어 있으면 width와 height swap
+            return CGSize(width: naturalSize.height, height: naturalSize.width)
+        } else {
+            return naturalSize
+        }
     }
 
 
@@ -357,27 +298,6 @@ struct VideoExporter {
         videoComposition: AVVideoComposition?,
         progressHandler: @escaping (Double) -> Void
     ) async throws -> URL {
-        print("📹 [VideoExporter.exportComposition] ====== Export 시작 ======")
-
-        // composition 트랙 정보 로깅
-        if let tracks = try? await composition.loadTracks(withMediaType: .video) {
-            for (index, track) in tracks.enumerated() {
-                if let naturalSize = try? await track.load(.naturalSize),
-                   let preferredTransform = try? await track.load(.preferredTransform) {
-                    print("📹 [VideoExporter.exportComposition] 트랙 \(index):")
-                    print("📹 [VideoExporter.exportComposition]   naturalSize: \(naturalSize)")
-                    print("📹 [VideoExporter.exportComposition]   preferredTransform: \(preferredTransform)")
-                }
-            }
-        }
-
-        if let videoComposition = videoComposition {
-            print("📹 [VideoExporter.exportComposition] videoComposition:")
-            print("📹 [VideoExporter.exportComposition]   renderSize: \(videoComposition.renderSize)")
-            print("📹 [VideoExporter.exportComposition]   customCompositorClass: \(String(describing: videoComposition.customVideoCompositorClass))")
-        }
-        print("📹 [VideoExporter.exportComposition] ====== Export 설정 완료 ======")
-
         guard let exportSession = AVAssetExportSession(
             asset: composition,
             presetName: AVAssetExportPresetHighestQuality
