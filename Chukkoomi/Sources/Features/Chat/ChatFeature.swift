@@ -26,6 +26,17 @@ struct ChatFeature: Reducer {
         var pendingFileUploads: [String: [Data]] = [:]  // localId: filesData
         var selectedTheme: ChatTheme = .default
         var isThemeSheetPresented: Bool = false
+
+        init(chatRoom: ChatRoom?, opponent: ChatUser, myUserId: String?) {
+            self.chatRoom = chatRoom
+            self.opponent = opponent
+            self.myUserId = myUserId
+
+            // roomId가 있으면 저장된 테마 불러오기
+            if let roomId = chatRoom?.roomId {
+                self.selectedTheme = ChatThemeStorage.loadTheme(for: roomId)
+            }
+        }
     }
 
     enum ChatTheme: String, CaseIterable, Equatable {
@@ -278,6 +289,10 @@ struct ChatFeature: Reducer {
 
         case .chatRoomCreated(let chatRoom):
             state.chatRoom = chatRoom
+
+            // 채팅방 생성 시 저장된 테마 불러오기
+            state.selectedTheme = ChatThemeStorage.loadTheme(for: chatRoom.roomId)
+
             return .none
 
         case .loadMoreMessages:
@@ -542,6 +557,12 @@ struct ChatFeature: Reducer {
         case .themeSelected(let theme):
             state.selectedTheme = theme
             state.isThemeSheetPresented = false
+
+            // roomId가 있으면 테마 저장
+            if let roomId = state.chatRoom?.roomId {
+                ChatThemeStorage.saveTheme(theme, for: roomId)
+            }
+
             return .none
 
         case .dismissThemeSheet:
