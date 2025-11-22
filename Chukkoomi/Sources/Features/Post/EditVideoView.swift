@@ -50,7 +50,7 @@ struct EditVideoView: View {
                 
                 // 편집 영역
                 ScrollView {
-                    HStack(alignment: .top, spacing: 28) {
+                    HStack(alignment: .top, spacing: 16) {
                         EditControlsView(viewStore: viewStore)
                             .padding(.leading, AppPadding.large)
                         
@@ -330,7 +330,7 @@ private struct CustomVideoPlayerView: UIViewRepresentable {
                         : naturalSize
 
                     // 컨테이너 크기 내에서 aspect-fit으로 표시되는 실제 크기 계산
-                    let containerSize = containerView.bounds.size
+                    let containerSize = await containerView.bounds.size
                     let displaySize = self.calculateAspectFitSize(
                         videoSize: videoSize,
                         containerSize: containerSize
@@ -677,12 +677,15 @@ private struct VideoTimelineEditor: UIViewRepresentable {
     
     // 1초당 픽셀 수
     private let pixelsPerSecond: CGFloat = 50
-    
+
     // 눈금자와 썸네일 타임라인 사이 간격 (삼각형이 들어갈 공간)
     private let gapBetweenRulerAndTimeline: CGFloat = 16
-    
+
     // 시간 Font
     private let timeFont = UIFont.systemFont(ofSize: 16, weight: .regular)
+
+    // 타임라인 좌우 패딩
+    private let timelinePadding: CGFloat = 16
     
     // 타임라인 높이
     private let trimmerHeight: CGFloat = 80
@@ -697,10 +700,9 @@ private struct VideoTimelineEditor: UIViewRepresentable {
         scrollView.backgroundColor = .clear
         scrollView.delegate = context.coordinator
         
-        // 시작/끝 여백 추가 (왼쪽 여백 제거)
-        let inset = AppPadding.large
-        scrollView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: inset)
-        scrollView.scrollIndicatorInsets = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: inset)
+        // contentInset 제거 (타임라인에 이미 패딩 포함)
+        scrollView.contentInset = .zero
+        scrollView.scrollIndicatorInsets = .zero
         
         let containerView = UIView()
         containerView.backgroundColor = .clear
@@ -717,7 +719,7 @@ private struct VideoTimelineEditor: UIViewRepresentable {
         
         // 안전한 width/height 계산 (음수/비유한 방지)
         let safeDuration = duration.isFinite && duration >= 0 ? duration : 0
-        let timelineWidth = max(0, CGFloat(safeDuration) * pixelsPerSecond)
+        let timelineWidth = max(0, CGFloat(safeDuration) * pixelsPerSecond + timelinePadding * 2)
         
         let totalHeight = scrollView.bounds.height
         let rulerHeight: CGFloat = 20
@@ -728,10 +730,10 @@ private struct VideoTimelineEditor: UIViewRepresentable {
         // 자막 영역 Y 위치 (타임라인 아래 + 간격)
         let subtitleOriginY = timelineOriginY + timelineHeight + gapBetweenTrimmerAndSubtitle
         
-        // 현재 재생 헤드 위치 (leftOffset 고려)
-        let playheadPosition = (safeDuration > 0 && timelineWidth > 0)
-        ? (currentTime / safeDuration) * timelineWidth
-        : 0
+        // 현재 재생 헤드 위치 (패딩 고려)
+        let playheadPosition = (safeDuration > 0)
+        ? timelinePadding + (currentTime / safeDuration) * (timelineWidth - timelinePadding * 2)
+        : timelinePadding
         
         // Container 크기 설정 (핸들 영역 포함)
         containerView.frame = CGRect(x: 0, y: 0, width: timelineWidth, height: totalHeight)
@@ -757,6 +759,7 @@ private struct VideoTimelineEditor: UIViewRepresentable {
                 let rulerView = TimeRulerView(frame: CGRect(x: 0, y: 0, width: rulerTotalWidth, height: rulerHeight))
                 rulerView.duration = safeDuration
                 rulerView.pixelsPerSecond = pixelsPerSecond
+                rulerView.padding = timelinePadding
                 rulerView.backgroundColor = .clear
                 rulerView.onSeek = onSeek
                 timeContainer.addSubview(rulerView)
@@ -765,6 +768,7 @@ private struct VideoTimelineEditor: UIViewRepresentable {
                 context.coordinator.rulerView?.frame = CGRect(x: 0, y: 0, width: rulerTotalWidth, height: rulerHeight)
                 context.coordinator.rulerView?.duration = safeDuration
                 context.coordinator.rulerView?.pixelsPerSecond = pixelsPerSecond
+                context.coordinator.rulerView?.padding = timelinePadding
                 context.coordinator.rulerView?.onSeek = onSeek
                 context.coordinator.rulerView?.setNeedsDisplay()
             }
@@ -779,10 +783,11 @@ private struct VideoTimelineEditor: UIViewRepresentable {
         }
         
         if let trimmerContainer = context.coordinator.trimmerContainer {
-            // leftOffset만큼 오른쪽으로 이동하여 핸들 공간 확보
-            trimmerContainer.frame = CGRect(x: 0, y: timelineOriginY, width: timelineWidth, height: timelineHeight)
+            // 패딩만큼 오른쪽으로 이동
+            trimmerContainer.frame = CGRect(x: timelinePadding, y: timelineOriginY, width: timelineWidth - timelinePadding * 2, height: timelineHeight)
             
             // Timeline trimmer view 업데이트
+            let contentWidth = timelineWidth - timelinePadding * 2
             if context.coordinator.timelineHostingController == nil {
                 let hostingController = UIHostingController(rootView:
                                                                 AnyView(
@@ -794,11 +799,11 @@ private struct VideoTimelineEditor: UIViewRepresentable {
                                                                         onTrimStartChanged: onTrimStartChanged,
                                                                         onTrimEndChanged: onTrimEndChanged
                                                                     )
-                                                                    .frame(width: timelineWidth, height: timelineHeight)
+                                                                    .frame(width: contentWidth, height: timelineHeight)
                                                                 )
                 )
                 hostingController.view.backgroundColor = .clear
-                hostingController.view.frame = CGRect(x: 0, y: 0, width: timelineWidth, height: timelineHeight)
+                hostingController.view.frame = CGRect(x: 0, y: 0, width: contentWidth, height: timelineHeight)
                 trimmerContainer.addSubview(hostingController.view)
                 context.coordinator.timelineHostingController = hostingController
                 context.coordinator.timelineView = hostingController.view
@@ -813,11 +818,11 @@ private struct VideoTimelineEditor: UIViewRepresentable {
                         onTrimStartChanged: onTrimStartChanged,
                         onTrimEndChanged: onTrimEndChanged
                     )
-                    .frame(width: timelineWidth, height: timelineHeight)
+                    .frame(width: contentWidth, height: timelineHeight)
                 )
-                
+
                 // Frame 업데이트
-                context.coordinator.timelineView?.frame = CGRect(x: 0, y: 0, width: timelineWidth, height: timelineHeight)
+                context.coordinator.timelineView?.frame = CGRect(x: 0, y: 0, width: contentWidth, height: timelineHeight)
             }
         }
         
@@ -831,13 +836,13 @@ private struct VideoTimelineEditor: UIViewRepresentable {
         }
         
         if let subtitleContainer = context.coordinator.subtitleContainer {
-            subtitleContainer.frame = CGRect(x: 0, y: subtitleOriginY, width: timelineWidth, height: subtitleHeight)
-            
+            subtitleContainer.frame = CGRect(x: timelinePadding, y: subtitleOriginY, width: timelineWidth - timelinePadding * 2, height: subtitleHeight)
+
             // 자막 블록들 업데이트
             // 현재 자막 ID 목록
             let currentSubtitleIds = Set(subtitles.map { $0.id })
             let cachedSubtitleIds = Set(context.coordinator.subtitleBlocks.keys)
-            
+
             // 제거된 자막 블록 삭제
             for id in cachedSubtitleIds where !currentSubtitleIds.contains(id) {
                 if let blockView = context.coordinator.subtitleBlocks[id] {
@@ -845,18 +850,19 @@ private struct VideoTimelineEditor: UIViewRepresentable {
                     context.coordinator.subtitleBlocks.removeValue(forKey: id)
                 }
             }
-            
+
             // 자막 블록 업데이트 또는 생성
+            let contentWidth = timelineWidth - timelinePadding * 2
             for subtitle in subtitles {
-                let startPosition = safeDuration > 0 ? (subtitle.startTime / safeDuration) * timelineWidth : 0
-                let endPosition = safeDuration > 0 ? (subtitle.endTime / safeDuration) * timelineWidth : 0
+                let startPosition = safeDuration > 0 ? (subtitle.startTime / safeDuration) * contentWidth : 0
+                let endPosition = safeDuration > 0 ? (subtitle.endTime / safeDuration) * contentWidth : 0
                 let blockWidth = max(endPosition - startPosition, 20) // 최소 너비 20
                 
                 if let existingBlock = context.coordinator.subtitleBlocks[subtitle.id] {
                     // 기존 블록 업데이트
                     existingBlock.subtitle = subtitle
                     existingBlock.duration = safeDuration
-                    existingBlock.timelineWidth = timelineWidth
+                    existingBlock.timelineWidth = contentWidth
                     existingBlock.frame = CGRect(x: startPosition, y: 0, width: blockWidth, height: subtitleHeight)
                     existingBlock.updateTextLabel()
                 } else {
@@ -864,7 +870,7 @@ private struct VideoTimelineEditor: UIViewRepresentable {
                     let blockView = SubtitleBlockUIView(
                         subtitle: subtitle,
                         duration: safeDuration,
-                        timelineWidth: timelineWidth,
+                        timelineWidth: contentWidth,
                         pixelsPerSecond: pixelsPerSecond,
                         onStartTimeChanged: onUpdateSubtitleStartTime,
                         onEndTimeChanged: onUpdateSubtitleEndTime,
@@ -1023,6 +1029,7 @@ private struct VideoTimelineEditor: UIViewRepresentable {
 private class TimeRulerView: UIView {
     var duration: Double = 0
     var pixelsPerSecond: CGFloat = 50
+    var padding: CGFloat = 20
     var onSeek: ((Double) -> Void)?
     private let timeFont = UIFont.systemFont(ofSize: 14, weight: .regular)
     
@@ -1044,18 +1051,20 @@ private class TimeRulerView: UIView {
     
     @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
         let location = gesture.location(in: self)
-        let tappedTime = Double(location.x) / Double(pixelsPerSecond)
+        // 패딩을 고려한 시간 계산
+        let adjustedX = location.x - padding
+        let tappedTime = Double(adjustedX) / Double(pixelsPerSecond)
         let clampedTime = min(max(tappedTime, 0), duration)
         onSeek?(clampedTime)
     }
     
     override func draw(_ rect: CGRect) {
         guard UIGraphicsGetCurrentContext() != nil else { return }
-        
+
         // 배경
         UIColor.systemGray6.setFill()
         UIRectFill(rect)
-        
+
         // 텍스트 속성
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
@@ -1064,12 +1073,13 @@ private class TimeRulerView: UIView {
             .foregroundColor: UIColor.label,
             .paragraphStyle: paragraphStyle
         ]
-        
+
         // 1초 간격으로 눈금 그리기
         let totalSeconds = Int(ceil(duration))
         for second in 0...totalSeconds {
-            let xPosition = CGFloat(second) * pixelsPerSecond
-            
+            // 패딩을 고려한 x 위치
+            let xPosition = padding + CGFloat(second) * pixelsPerSecond
+
             // 세로선 그리기
             UIColor.separator.setStroke()
             let linePath = UIBezierPath()
@@ -1077,7 +1087,7 @@ private class TimeRulerView: UIView {
             linePath.addLine(to: CGPoint(x: xPosition, y: rect.height))
             linePath.lineWidth = 1
             linePath.stroke()
-            
+
             // 시간 텍스트 그리기
             let timeText = "\(second)s"
             let textSize = (timeText as NSString).size(withAttributes: attributes)
@@ -1614,7 +1624,7 @@ private class SubtitleBlockUIView: UIView {
 private struct FilterSelectionView: View {
     let selectedFilter: VideoFilter?
     let onFilterSelected: (VideoFilter) -> Void
-    
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: AppPadding.medium) {
@@ -1628,6 +1638,7 @@ private struct FilterSelectionView: View {
                     )
                 }
             }
+            .padding(.horizontal, 16)
         }
     }
 }
