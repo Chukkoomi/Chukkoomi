@@ -107,10 +107,18 @@ struct UploadFileResponseDTO: Decodable {
 // MARK: - DTO -> Entity
 extension ChatMessageResponseDTO {
     var toDomain: ChatMessage {
+        // 게시물 공유 메시지인 경우 content를 nil로 설정
+        let actualContent: String?
+        if sharedPost != nil {
+            actualContent = nil
+        } else {
+            actualContent = content
+        }
+
         return ChatMessage(
             chatId: chatId,
             roomId: roomId,
-            content: content,
+            content: actualContent,
             createdAt: createdAt,
             sender: sender.toDomain,
             files: files,

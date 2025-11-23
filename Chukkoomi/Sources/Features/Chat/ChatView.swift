@@ -583,26 +583,26 @@ struct MessageRow: View {
                     sharedPost: sharedPost,
                     isMyMessage: isMyMessage
                 )
-            } else {
-                // 일반 메시지 내용
-                if let content = message.content, !content.isEmpty {
-                    Text(content)
-                        .font(.system(size: 15))
-                        .foregroundColor(isMyMessage ? .white : .black)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(isMyMessage ? Color(hex: "002D5B") : .white)
-                        .cornerRadius(12)
-                }
+            }
 
-                // 이미지 파일
-                if let localImages = message.localImages, !localImages.isEmpty {
-                    // 업로드 중인 로컬 이미지 표시
-                    localImageGridView(imagesData: localImages)
-                } else if !message.files.isEmpty {
-                    // 서버 이미지 표시
-                    imageGridView(files: message.files)
-                }
+            // 메시지 내용
+            if let content = message.content, !content.isEmpty {
+                Text(content)
+                    .font(.system(size: 15))
+                    .foregroundColor(isMyMessage ? .white : .black)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(isMyMessage ? Color(hex: "002D5B") : .white)
+                    .cornerRadius(12)
+            }
+
+            // 이미지 파일
+            if let localImages = message.localImages, !localImages.isEmpty {
+                // 업로드 중인 로컬 이미지 표시
+                localImageGridView(imagesData: localImages)
+            } else if !message.files.isEmpty {
+                // 서버 이미지 표시
+                imageGridView(files: message.files)
             }
         }
     }
@@ -636,7 +636,7 @@ struct MessageRow: View {
                 if MediaTypeHelper.isVideoPath(files[0]) {
                     ChatVideoPlayerView(
                         mediaPath: files[0],
-                        maxWidth: 260
+                        maxWidth: 200
                     )
                     .cornerRadius(8)
                 } else {
@@ -712,7 +712,7 @@ struct MessageRow: View {
                     if MediaTypeHelper.isVideoPath(filePath) {
                         ChatVideoPlayerView(
                             mediaPath: filePath,
-                            maxWidth: 260
+                            maxWidth: 200
                         )
                         .cornerRadius(8)
                     } else {
@@ -964,7 +964,6 @@ struct LocalMediaGridView: View {
     }
 }
 
-<<<<<<< HEAD
 // MARK: - Shared Post Card View
 struct SharedPostCardView: View {
     let sharedPost: SharedPost
@@ -1009,24 +1008,24 @@ struct SharedPostCardView: View {
                 ZStack {
                     // 검정 배경
                     Color.black
-                        .frame(width: 250, height: 200)
+                        .frame(width: 200, height: 150)
 
                     // 미디어 콘텐츠
                     if MediaTypeHelper.isVideoPath(firstFile) {
                         ChatVideoPlayerView(
                             mediaPath: firstFile,
-                            maxWidth: 250
+                            maxWidth: 200
                         )
-                        .frame(maxHeight: 200)
+                        .frame(maxHeight: 150)
                     } else {
                         AsyncMediaImageView(
                             imagePath: firstFile,
-                            width: 250,
-                            height: 200
+                            width: 200,
+                            height: 150
                         )
                     }
                 }
-                .frame(width: 250, height: 200)
+                .frame(width: 200, height: 150)
                 .clipped()
             }
 
@@ -1051,7 +1050,7 @@ struct SharedPostCardView: View {
                 .padding(.bottom, 12)
             }
         }
-        .frame(width: 250)
+        .frame(width: 200)
         .background(isMyMessage ? Color(hex: "002D5B") : .white)
         .cornerRadius(12)
         .overlay(
