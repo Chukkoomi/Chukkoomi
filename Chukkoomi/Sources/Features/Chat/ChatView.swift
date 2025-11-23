@@ -78,6 +78,7 @@ struct ChatView: View {
                                     opponentProfileImage: opponentProfileImage,
                                     showProfile: shouldShowProfile(currentMessage: message, previousMessage: previousMessage, myUserId: viewStore.myUserId),
                                     showTime: shouldShowTime(currentMessage: message, nextMessage: nextMessage, myUserId: viewStore.myUserId),
+                                    selectedTheme: viewStore.selectedTheme,
                                     onRetry: { localId in
                                         viewStore.send(.retryMessage(localId: localId))
                                     },
@@ -108,16 +109,6 @@ struct ChatView: View {
                         }
                     }
                     .scrollDismissesKeyboard(.immediately)
-                    .background(
-                        GeometryReader { geometry in
-                            Image("기본 테마")
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: geometry.size.width, height: geometry.size.height)
-                                .clipped()
-                        }
-                        .ignoresSafeArea()
-                    )
                 }
 
                 Divider()
@@ -127,7 +118,7 @@ struct ChatView: View {
                     // 이미지/영상 선택 버튼
                     PhotosPicker(selection: $selectedPhotosItems, maxSelectionCount: 5, matching: .any(of: [.images, .videos])) {
                         Image(systemName: "photo")
-                            .foregroundColor(.blue)
+                            .foregroundColor(.white)
                             .font(.system(size: 22))
                     }
                     .onChange(of: selectedPhotosItems) { oldValue, newValue in
@@ -140,16 +131,17 @@ struct ChatView: View {
                         send: { .messageTextChanged($0) }
                     ))
                     .textFieldStyle(.plain)
+                    .foregroundColor(.black)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(Color.gray.opacity(0.1))
+                    .background(Color.white)
                     .cornerRadius(20)
 
                     Button(action: {
                         viewStore.send(.sendMessageTapped)
                     }) {
                         Image(systemName: "paperplane.fill")
-                            .foregroundColor(viewStore.messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .gray : .blue)
+                            .foregroundColor(viewStore.messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color(hex: "002D5B") : .white)
                             .font(.system(size: 20))
                     }
                     .disabled(viewStore.messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewStore.isSending)
@@ -171,10 +163,48 @@ struct ChatView: View {
                     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                 }
             )
+            .background(
+                Group {
+                    if let imageName = viewStore.selectedTheme.imageName {
+                        GeometryReader { geometry in
+                            Image(imageName)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: geometry.size.width, height: geometry.size.height)
+                                .clipped()
+                        }
+                        .ignoresSafeArea(edges: .bottom)
+                    }
+                }
+            )
             .navigationTitle(opponentNickname(chatRoom: viewStore.chatRoom, opponent: viewStore.opponent, myUserId: viewStore.myUserId))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .tabBar)
-            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(Color(hex: "202255"), for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
+                        viewStore.send(.themeButtonTapped)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .foregroundColor(.white)
+                    }
+                }
+            }
+            .sheet(isPresented: viewStore.binding(
+                get: \.isThemeSheetPresented,
+                send: .dismissThemeSheet
+            )) {
+                ThemeSelectionView(
+                    selectedTheme: viewStore.selectedTheme,
+                    onThemeSelected: { theme in
+                        viewStore.send(.themeSelected(theme))
+                    }
+                )
+                .presentationDetents([.medium])
+            }
         }
     }
 
@@ -447,6 +477,7 @@ struct MessageRow: View {
     let opponentProfileImage: UIImage?
     let showProfile: Bool
     let showTime: Bool
+    let selectedTheme: ChatFeature.ChatTheme
     let onRetry: ((String) -> Void)?
     let onCancel: ((String) -> Void)?
 
@@ -509,11 +540,7 @@ struct MessageRow: View {
                             .frame(width: 36, height: 36)
                             .clipShape(Circle())
                     } else {
-                        Image("기본 프로필")
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 36, height: 36)
-                            .clipShape(Circle())
+                        ProfileImageView(selectedTheme: selectedTheme)
                     }
                 } else {
                     // 프로필 이미지 자리 확보 (투명 공간)
@@ -526,7 +553,7 @@ struct MessageRow: View {
                     if showProfile {
                         Text(message.sender.nick)
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.primary)
+                            .foregroundColor(.white)
                     }
 
                     HStack(alignment: .bottom, spacing: 8) {
@@ -554,10 +581,10 @@ struct MessageRow: View {
             if let content = message.content, !content.isEmpty {
                 Text(content)
                     .font(.system(size: 15))
-                    .foregroundColor(isMyMessage ? .black : .white)
+                    .foregroundColor(isMyMessage ? .white : .black)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(isMyMessage ? AppColor.disabled : Color.gray.opacity(0.7))
+                    .background(isMyMessage ? Color(hex: "002D5B") : .white)
                     .cornerRadius(12)
             }
 
@@ -926,5 +953,27 @@ struct LocalMediaGridView: View {
         await MainActor.run {
             self.thumbnails = results
         }
+    }
+}
+
+// MARK: - 프로필 이미지 뷰 (테마별 기본 이미지)
+struct ProfileImageView: View {
+    let selectedTheme: ChatFeature.ChatTheme
+
+    var body: some View {
+        let imageName: String = {
+            switch selectedTheme {
+            case .theme2, .theme3:
+                return "기본 프로필2"
+            default:
+                return "기본 프로필"
+            }
+        }()
+
+        Image(imageName)
+            .resizable()
+            .scaledToFill()
+            .frame(width: 36, height: 36)
+            .clipShape(Circle())
     }
 }
