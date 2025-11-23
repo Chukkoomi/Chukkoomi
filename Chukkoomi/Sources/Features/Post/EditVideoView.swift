@@ -64,6 +64,7 @@ struct EditVideoView: View {
                                 trimStartTime: viewStore.editState.trimStartTime,
                                 trimEndTime: viewStore.editState.trimEndTime,
                                 subtitles: viewStore.editState.subtitles,
+                                backgroundMusic: viewStore.editState.backgroundMusic,
                                 onTrimStartChanged: { time in
                                     viewStore.send(.updateTrimStartTime(time))
                                 },
@@ -84,9 +85,18 @@ struct EditVideoView: View {
                                 },
                                 onEditSubtitle: { id in
                                     viewStore.send(.editSubtitle(id))
+                                },
+                                onRemoveBackgroundMusic: {
+                                    viewStore.send(.removeBackgroundMusic)
+                                },
+                                onUpdateBackgroundMusicStartTime: { time in
+                                    viewStore.send(.updateBackgroundMusicStartTime(time))
+                                },
+                                onUpdateBackgroundMusicEndTime: { time in
+                                    viewStore.send(.updateBackgroundMusicEndTime(time))
                                 }
                             )
-                            .frame(height: 20 + 16 + 80 + 16 + 80) // 눈금자(20) + 간격(16) + 타임라인(80) + 간격(16) + 자막(80)
+                            .frame(height: 20 + 16 + 80 + 16 + 80 + 16 + 80) // 눈금자(20) + 간격(16) + 타임라인(80) + 간격(16) + 자막(80) + 간격(16) + 배경음악(80)
                             
                             // 필터 선택
                             FilterSelectionView(
@@ -583,8 +593,8 @@ private struct EditControlsView: View {
             
             // 자르기
             EditGuideView(editType: .trim)
-                .frame(width: 36, height: 36)
-                .padding(.top, 32)
+                .frame(width: 44, height: 36)
+                .padding(.top, 30)
             
             // 자막 추가 버튼
             Button {
@@ -592,13 +602,22 @@ private struct EditControlsView: View {
             } label: {
                 EditGuideView(editType: .subtitle)
             }
-            .frame(width: 36, height: 36)
-            .padding(.top, 58)
-            
+            .frame(width: 44, height: 36)
+            .padding(.top, 60)
+
+            // 배경음악 추가 버튼
+            Button {
+                // TODO: 음악 선택 화면 표시
+            } label: {
+                EditGuideView(editType: .music)
+            }
+            .frame(width: 44, height: 36)
+            .padding(.top, 60)
+
             // 필터
             EditGuideView(editType: .filter)
-                .frame(width: 36, height: 36)
-                .padding(.top, 64)
+                .frame(width: 44, height: 36)
+                .padding(.top, 60)
         }
     }
 }
@@ -606,34 +625,45 @@ private struct EditControlsView: View {
 // MARK: - Edit Guide View
 private struct EditGuideView: View {
     let editType: EditType
-    
+
     var body: some View {
         VStack(spacing: 4) {
             icon
-            
-            Text(editType.rawValue)
-                .multilineTextAlignment(.center)
-                .font(.appCaption)
+
+            HStack(spacing: 2) {
+                Text(editType.rawValue)
+                    .multilineTextAlignment(.center)
+                    .font(.appCaption)
+
+                if editType == .subtitle || editType == .music {
+                    AppIcon.plusCircle
+                        .font(.system(size: 14))
+                }
+            }
         }
         .foregroundStyle(.black)
     }
-    
+
     enum EditType: String {
         case trim = "자르기"
         case subtitle = "자막"
+        case music = "음악"
         case filter = "필터"
     }
-    
+
     var icon: some View {
         switch editType {
         case .trim:
-            return AppIcon.trim
+            AppIcon.trim
                 .font(.system(size: 20))
         case .subtitle:
-            return AppIcon.addSubtitle
+            AppIcon.subtitle
+                .font(.system(size: 24))
+        case .music:
+            AppIcon.music
                 .font(.system(size: 24))
         case .filter:
-            return AppIcon.filter
+            AppIcon.filter
                 .font(.system(size: 24))
         }
     }
@@ -671,6 +701,7 @@ private struct VideoTimelineEditor: UIViewRepresentable {
     let trimStartTime: Double
     let trimEndTime: Double
     let subtitles: [EditVideoFeature.Subtitle]
+    let backgroundMusic: EditVideoFeature.BackgroundMusic?
     let onTrimStartChanged: (Double) -> Void
     let onTrimEndChanged: (Double) -> Void
     let onSeek: (Double) -> Void
@@ -678,6 +709,9 @@ private struct VideoTimelineEditor: UIViewRepresentable {
     let onUpdateSubtitleStartTime: (UUID, Double) -> Void
     let onUpdateSubtitleEndTime: (UUID, Double) -> Void
     let onEditSubtitle: (UUID) -> Void
+    let onRemoveBackgroundMusic: () -> Void
+    let onUpdateBackgroundMusicStartTime: (Double) -> Void
+    let onUpdateBackgroundMusicEndTime: (Double) -> Void
     
     // 1초당 픽셀 수
     private let pixelsPerSecond: CGFloat = 50
@@ -697,6 +731,10 @@ private struct VideoTimelineEditor: UIViewRepresentable {
     private let subtitleHeight: CGFloat = 80
     // 타임라인과 자막 사이 간격
     private let gapBetweenTrimmerAndSubtitle: CGFloat = 16
+    // 배경음악 영역 높이
+    private let backgroundMusicHeight: CGFloat = 80
+    // 자막과 배경음악 사이 간격
+    private let gapBetweenSubtitleAndMusic: CGFloat = 16
     
     func makeUIView(context: Context) -> UIScrollView {
         let scrollView = UIScrollView()
@@ -740,6 +778,9 @@ private struct VideoTimelineEditor: UIViewRepresentable {
         
         // 자막 영역 Y 위치 (타임라인 아래 + 간격)
         let subtitleOriginY = timelineOriginY + timelineHeight + gapBetweenTrimmerAndSubtitle
+
+        // 배경음악 영역 Y 위치 (자막 아래 + 간격)
+        let backgroundMusicOriginY = subtitleOriginY + subtitleHeight + gapBetweenSubtitleAndMusic
         
         // 현재 재생 헤드 위치 (패딩 고려)
         let playheadPosition = (safeDuration > 0)
@@ -902,8 +943,58 @@ private struct VideoTimelineEditor: UIViewRepresentable {
                 }
             }
         }
-        
-        // Playhead view 업데이트 (자막 영역까지 확장)
+
+        // 배경음악 영역 컨테이너
+        if context.coordinator.backgroundMusicContainer == nil {
+            let musicContainer = UIView()
+            musicContainer.backgroundColor = UIColor.systemGray6
+            musicContainer.layer.cornerRadius = 4
+            containerView.addSubview(musicContainer)
+            context.coordinator.backgroundMusicContainer = musicContainer
+        }
+
+        if let musicContainer = context.coordinator.backgroundMusicContainer {
+            musicContainer.frame = CGRect(x: timelinePadding, y: backgroundMusicOriginY, width: timelineWidth - timelinePadding * 2, height: backgroundMusicHeight)
+
+            // 배경음악 블록 업데이트
+            if let music = backgroundMusic {
+                let contentWidth = timelineWidth - timelinePadding * 2
+                let startPosition = safeDuration > 0 ? (music.startTime / safeDuration) * contentWidth : 0
+                let endPosition = safeDuration > 0 ? (music.endTime / safeDuration) * contentWidth : 0
+                let blockWidth = max(endPosition - startPosition, 20) // 최소 너비 20
+
+                if let existingBlock = context.coordinator.backgroundMusicBlock {
+                    // 기존 블록 업데이트
+                    existingBlock.backgroundMusic = music
+                    existingBlock.duration = safeDuration
+                    existingBlock.timelineWidth = contentWidth
+                    existingBlock.frame = CGRect(x: startPosition, y: 0, width: blockWidth, height: backgroundMusicHeight)
+                    existingBlock.updateLabel()
+                } else {
+                    // 새 블록 생성
+                    let blockView = BackgroundMusicBlockUIView(
+                        backgroundMusic: music,
+                        duration: safeDuration,
+                        timelineWidth: contentWidth,
+                        pixelsPerSecond: pixelsPerSecond,
+                        onStartTimeChanged: onUpdateBackgroundMusicStartTime,
+                        onEndTimeChanged: onUpdateBackgroundMusicEndTime,
+                        onRemove: onRemoveBackgroundMusic
+                    )
+                    blockView.frame = CGRect(x: startPosition, y: 0, width: blockWidth, height: backgroundMusicHeight)
+                    musicContainer.addSubview(blockView)
+                    context.coordinator.backgroundMusicBlock = blockView
+                }
+            } else {
+                // 배경음악이 없으면 블록 제거
+                if let blockView = context.coordinator.backgroundMusicBlock {
+                    blockView.removeFromSuperview()
+                    context.coordinator.backgroundMusicBlock = nil
+                }
+            }
+        }
+
+        // Playhead view 업데이트 (배경음악 영역까지 확장)
         if context.coordinator.playheadView == nil {
             let playheadView = PlayheadUIView(frame: CGRect(x: 0, y: 0, width: 12, height: totalHeight))
             playheadView.layer.zPosition = 1000
@@ -1020,6 +1111,7 @@ private struct VideoTimelineEditor: UIViewRepresentable {
         var timeDisplayContainer: UIView?  // 시간 표시 컨테이너 (눈금자 + 현재 시간)
         var trimmerContainer: UIView?      // VideoTimelineTrimmer 컨테이너
         var subtitleContainer: UIView?     // 자막 컨테이너
+        var backgroundMusicContainer: UIView?  // 배경음악 컨테이너
         var playheadView: PlayheadUIView?
         var timelineView: UIView?
         var timelineHostingController: UIHostingController<AnyView>?
@@ -1028,6 +1120,7 @@ private struct VideoTimelineEditor: UIViewRepresentable {
         var isUserScrolling = false
         var isSeeking = false  // seek 중인지 추적
         var subtitleBlocks: [UUID: SubtitleBlockUIView] = [:]  // 자막 블록 캐시
+        var backgroundMusicBlock: BackgroundMusicBlockUIView?  // 배경음악 블록
         var loadingIndicatorView: UIView?  // 로딩 indicator (화면 중앙에 배치)
         weak var scrollView: UIScrollView?  // ScrollView 참조
         var timelineOriginY: CGFloat = 0  // 타임라인 Y 위치
@@ -1683,6 +1776,213 @@ private class SubtitleBlockUIView: UIView {
 
     @objc private func handleTap() {
         onEdit?(subtitle.id)
+    }
+}
+
+// MARK: - Background Music Block UIView
+private class BackgroundMusicBlockUIView: UIView {
+    private let handleWidth: CGFloat = 12
+    var backgroundMusic: EditVideoFeature.BackgroundMusic
+    var duration: Double
+    var timelineWidth: CGFloat
+    var pixelsPerSecond: CGFloat
+    var onStartTimeChanged: ((Double) -> Void)?
+    var onEndTimeChanged: ((Double) -> Void)?
+    var onRemove: (() -> Void)?
+
+    private var leftHandle: UIView!
+    private var rightHandle: UIView!
+    private var removeButton: UIButton!
+    private var textLabel: UILabel!
+
+    init(
+        backgroundMusic: EditVideoFeature.BackgroundMusic,
+        duration: Double,
+        timelineWidth: CGFloat,
+        pixelsPerSecond: CGFloat,
+        onStartTimeChanged: @escaping (Double) -> Void,
+        onEndTimeChanged: @escaping (Double) -> Void,
+        onRemove: @escaping () -> Void
+    ) {
+        self.backgroundMusic = backgroundMusic
+        self.duration = duration
+        self.timelineWidth = timelineWidth
+        self.pixelsPerSecond = pixelsPerSecond
+        self.onStartTimeChanged = onStartTimeChanged
+        self.onEndTimeChanged = onEndTimeChanged
+        self.onRemove = onRemove
+
+        super.init(frame: .zero)
+        setupViews()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupViews() {
+        backgroundColor = UIColor.systemGreen.withAlphaComponent(0.6)
+        layer.cornerRadius = 4
+        clipsToBounds = true
+
+        // 왼쪽 핸들
+        leftHandle = UIView()
+        leftHandle.backgroundColor = UIColor.systemGreen
+        leftHandle.layer.cornerRadius = 4
+        addSubview(leftHandle)
+
+        // 왼쪽 핸들 그립 라인
+        let leftGrip = UIView()
+        leftGrip.backgroundColor = .white
+        leftGrip.layer.cornerRadius = 1
+        leftHandle.addSubview(leftGrip)
+        leftGrip.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            leftGrip.centerXAnchor.constraint(equalTo: leftHandle.centerXAnchor),
+            leftGrip.centerYAnchor.constraint(equalTo: leftHandle.centerYAnchor),
+            leftGrip.widthAnchor.constraint(equalToConstant: 2),
+            leftGrip.heightAnchor.constraint(equalToConstant: 12)
+        ])
+
+        let leftPan = UIPanGestureRecognizer(target: self, action: #selector(handleLeftPan(_:)))
+        leftHandle.addGestureRecognizer(leftPan)
+        leftHandle.isUserInteractionEnabled = true
+
+        // 오른쪽 핸들
+        rightHandle = UIView()
+        rightHandle.backgroundColor = UIColor.systemGreen
+        rightHandle.layer.cornerRadius = 4
+        addSubview(rightHandle)
+
+        // 오른쪽 핸들 그립 라인
+        let rightGrip = UIView()
+        rightGrip.backgroundColor = .white
+        rightGrip.layer.cornerRadius = 1
+        rightHandle.addSubview(rightGrip)
+        rightGrip.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            rightGrip.centerXAnchor.constraint(equalTo: rightHandle.centerXAnchor),
+            rightGrip.centerYAnchor.constraint(equalTo: rightHandle.centerYAnchor),
+            rightGrip.widthAnchor.constraint(equalToConstant: 2),
+            rightGrip.heightAnchor.constraint(equalToConstant: 12)
+        ])
+
+        let rightPan = UIPanGestureRecognizer(target: self, action: #selector(handleRightPan(_:)))
+        rightHandle.addGestureRecognizer(rightPan)
+        rightHandle.isUserInteractionEnabled = true
+
+        // 제거 버튼
+        removeButton = UIButton(type: .custom)
+        removeButton.setImage(UIImage(systemName: "xmark.circle.fill"), for: .normal)
+        removeButton.tintColor = .white
+        removeButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        removeButton.layer.cornerRadius = 8
+        removeButton.addTarget(self, action: #selector(handleRemove), for: .touchUpInside)
+        addSubview(removeButton)
+
+        // 텍스트 라벨
+        textLabel = UILabel()
+        textLabel.font = UIFont.systemFont(ofSize: 14, weight: .medium)
+        textLabel.textColor = .white
+        textLabel.textAlignment = .center
+        textLabel.numberOfLines = 1
+        addSubview(textLabel)
+        updateLabel()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+
+        // 왼쪽 핸들
+        leftHandle.frame = CGRect(x: 0, y: 0, width: handleWidth, height: bounds.height)
+
+        // 오른쪽 핸들
+        rightHandle.frame = CGRect(x: bounds.width - handleWidth, y: 0, width: handleWidth, height: bounds.height)
+
+        // 제거 버튼
+        removeButton.frame = CGRect(x: bounds.width - handleWidth - 4 - 16, y: 4, width: 16, height: 16)
+
+        // 텍스트 라벨 (핸들과 제거 버튼 사이 영역)
+        let textX = handleWidth + 4
+        let textWidth = bounds.width - handleWidth * 2 - 8
+        textLabel.frame = CGRect(x: textX, y: 0, width: textWidth, height: bounds.height)
+    }
+
+    func updateLabel() {
+        textLabel.text = "🎵 배경음악"
+    }
+
+    func updatePosition() {
+        // 프레임 업데이트 (외부에서 호출)
+        let startPosition = duration > 0 ? (backgroundMusic.startTime / duration) * timelineWidth : 0
+        let endPosition = duration > 0 ? (backgroundMusic.endTime / duration) * timelineWidth : 0
+        let blockWidth = max(endPosition - startPosition, 20)
+
+        self.frame = CGRect(x: startPosition, y: self.frame.origin.y, width: blockWidth, height: self.frame.height)
+    }
+
+    @objc private func handleLeftPan(_ gesture: UIPanGestureRecognizer) {
+        guard let superview = superview else { return }
+
+        if gesture.state == .changed {
+            // superview 내에서의 터치 위치
+            let location = gesture.location(in: superview)
+
+            // 새로운 시작 위치
+            let newStartPosition = max(0, location.x)
+
+            // 끝 위치 계산
+            let endPosition = (backgroundMusic.endTime / duration) * timelineWidth
+
+            // 최소 너비 유지 (0.5초에 해당하는 픽셀)
+            let minWidth = (0.5 / duration) * timelineWidth
+            let clampedPosition = min(newStartPosition, endPosition - minWidth)
+
+            // 시간으로 변환
+            let newStartTime = (clampedPosition / timelineWidth) * duration
+            let clampedTime = max(0, min(newStartTime, backgroundMusic.endTime - 0.5))
+
+            // 즉시 프레임 업데이트 (드래그 중에는 애니메이션 없음)
+            let blockWidth = endPosition - clampedPosition
+            self.frame = CGRect(x: clampedPosition, y: self.frame.origin.y, width: blockWidth, height: self.frame.height)
+
+            // 상태 업데이트 콜백
+            onStartTimeChanged?(clampedTime)
+        }
+    }
+
+    @objc private func handleRightPan(_ gesture: UIPanGestureRecognizer) {
+        guard let superview = superview else { return }
+
+        if gesture.state == .changed {
+            // superview 내에서의 터치 위치
+            let location = gesture.location(in: superview)
+
+            // 새로운 끝 위치
+            let newEndPosition = min(timelineWidth, location.x)
+
+            // 시작 위치 계산
+            let startPosition = (backgroundMusic.startTime / duration) * timelineWidth
+
+            // 최소 너비 유지
+            let minWidth = (0.5 / duration) * timelineWidth
+            let clampedPosition = max(newEndPosition, startPosition + minWidth)
+
+            // 시간으로 변환
+            let newEndTime = (clampedPosition / timelineWidth) * duration
+            let clampedTime = min(duration, max(newEndTime, backgroundMusic.startTime + 0.5))
+
+            // 즉시 프레임 업데이트 (드래그 중에는 애니메이션 없음)
+            let blockWidth = clampedPosition - startPosition
+            self.frame = CGRect(x: startPosition, y: self.frame.origin.y, width: blockWidth, height: self.frame.height)
+
+            // 상태 업데이트 콜백
+            onEndTimeChanged?(clampedTime)
+        }
+    }
+
+    @objc private func handleRemove() {
+        onRemove?()
     }
 }
 

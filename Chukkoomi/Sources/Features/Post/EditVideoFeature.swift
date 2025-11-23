@@ -61,6 +61,24 @@ struct EditVideoFeature {
         var trimEndTime: Double = 0.0
         var selectedFilter: VideoFilter? = nil
         var subtitles: [Subtitle] = []
+        var backgroundMusic: BackgroundMusic? = nil
+    }
+
+    // MARK: - Background Music
+    struct BackgroundMusic: Equatable, Identifiable {
+        let id: UUID
+        var musicURL: URL
+        var startTime: Double  // 비디오 기준 시작 시간
+        var endTime: Double    // 비디오 기준 종료 시간
+        var volume: Float      // 0.0 ~ 1.0
+
+        init(id: UUID = UUID(), musicURL: URL, startTime: Double = 0.0, endTime: Double, volume: Float = 0.5) {
+            self.id = id
+            self.musicURL = musicURL
+            self.startTime = startTime
+            self.endTime = endTime
+            self.volume = volume
+        }
     }
 
     // MARK: - Subtitle
@@ -113,6 +131,13 @@ struct EditVideoFeature {
         case updateSubtitleInputText(String)
         case confirmSubtitleInput
         case cancelSubtitleInput
+
+        // Background Music
+        case addBackgroundMusic(URL)
+        case removeBackgroundMusic
+        case updateBackgroundMusicStartTime(Double)
+        case updateBackgroundMusicEndTime(Double)
+        case updateBackgroundMusicVolume(Float)
 
         // Alert
         case alert(PresentationAction<Alert>)
@@ -470,6 +495,48 @@ struct EditVideoFeature {
                     if clampedTime - startTime >= 0.5 {
                         state.editState.subtitles[index].endTime = clampedTime
                     }
+                }
+                return .none
+
+            case .addBackgroundMusic(let url):
+                // 배경음악 추가
+                let backgroundMusic = BackgroundMusic(
+                    musicURL: url,
+                    startTime: 0.0,
+                    endTime: min(state.duration, state.editState.trimEndTime),
+                    volume: 0.5
+                )
+                state.editState.backgroundMusic = backgroundMusic
+                return .none
+
+            case .removeBackgroundMusic:
+                // 배경음악 제거
+                state.editState.backgroundMusic = nil
+                return .none
+
+            case .updateBackgroundMusicStartTime(let time):
+                // 배경음악 시작 시간 업데이트
+                if var music = state.editState.backgroundMusic {
+                    let clampedTime = max(0, min(time, music.endTime - 0.5))
+                    music.startTime = clampedTime
+                    state.editState.backgroundMusic = music
+                }
+                return .none
+
+            case .updateBackgroundMusicEndTime(let time):
+                // 배경음악 종료 시간 업데이트
+                if var music = state.editState.backgroundMusic {
+                    let clampedTime = min(state.duration, max(time, music.startTime + 0.5))
+                    music.endTime = clampedTime
+                    state.editState.backgroundMusic = music
+                }
+                return .none
+
+            case .updateBackgroundMusicVolume(let volume):
+                // 배경음악 볼륨 업데이트
+                if var music = state.editState.backgroundMusic {
+                    music.volume = max(0, min(1, volume))
+                    state.editState.backgroundMusic = music
                 }
                 return .none
 
