@@ -2026,9 +2026,9 @@ private struct FilterButton: View {
                     .customRadius()
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+                            .strokeBorder(isSelected ? Color.blue : Color.clear, lineWidth: 2)
                     )
-                
+
                 // 필터 이름
                 Text(filter.displayName)
                     .font(.appCaption)
