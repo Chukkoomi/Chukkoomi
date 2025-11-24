@@ -205,6 +205,9 @@ struct ChatView: View {
                 )
                 .presentationDetents([.medium])
             }
+            .onDisappear {
+                viewStore.send(.onDisappear)
+            }
         }
     }
 

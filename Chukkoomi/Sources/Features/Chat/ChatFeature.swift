@@ -11,6 +11,11 @@ import RealmSwift
 
 struct ChatFeature: Reducer {
 
+    // MARK: - Cancel ID
+    enum CancelID {
+        case webSocket
+    }
+
     // MARK: - State
     struct State: Equatable {
         var chatRoom: ChatRoom?  // 옵셔널로 변경 (첫 메시지 전송 시 생성)
@@ -26,6 +31,7 @@ struct ChatFeature: Reducer {
         var pendingFileUploads: [String: [Data]] = [:]  // localId: filesData
         var selectedTheme: ChatTheme = .default
         var isThemeSheetPresented: Bool = false
+        var isWebSocketConnected: Bool = false
 
         init(chatRoom: ChatRoom?, opponent: ChatUser, myUserId: String?) {
             self.chatRoom = chatRoom
@@ -60,6 +66,7 @@ struct ChatFeature: Reducer {
     // MARK: - Action
     enum Action: Equatable {
         case onAppear
+        case onDisappear
         case loadMessages
         case messagesLoaded([ChatMessage], hasMore: Bool)
         case messagesLoadedFromRealm([ChatMessage])
@@ -85,18 +92,41 @@ struct ChatFeature: Reducer {
         case themeButtonTapped
         case themeSelected(ChatTheme)
         case dismissThemeSheet
+
+        // WebSocket
+        case connectWebSocket
+        case webSocketConnected
+        case webSocketDisconnected
+        case webSocketMessageReceived([ChatMessage])
+        case webSocketError(String)
     }
 
     // MARK: - Reducer
     func reduce(into state: inout State, action: Action) -> Effect<Action> {
         switch action {
         case .onAppear:
+            print("[ChatFeature] 👀 onAppear called")
+            print("[ChatFeature] chatRoom: \(state.chatRoom?.roomId ?? "nil")")
+
             // 채팅방이 없으면 (첫 메시지 전송 전) 로딩하지 않음
             guard let roomId = state.chatRoom?.roomId else {
+                print("[ChatFeature] ⚠️ No roomId, skipping WebSocket connection")
                 return .none
             }
 
+            // ===== 🧪 Postman 테스트용 정보 출력 =====
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            print("🔌 WebSocket 테스트 정보")
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            print("🏠 Room ID: \(roomId)")
+            print("👤 상대방 User ID: \(state.opponent.userId)")
+            print("📛 상대방 닉네임: \(state.opponent.nick)")
+            print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
+            // PDF 권장 순서:
             // 1. Realm에서 먼저 로드 (빠른 UI 표시)
+            // 2. HTTP로 동기화
+            // 3. 모든 동기화 완료 후 WebSocket 연결 (.messagesLoaded에서 처리)
             return .run { send in
                 _ = await MainActor.run {
                     do {
@@ -108,7 +138,7 @@ struct ChatFeature: Reducer {
 
                         Task {
                             send(.messagesLoadedFromRealm(messages))
-                            // 2. Realm 로드 후 HTTP로 동기화
+                            // Realm 로드 후 HTTP로 동기화
                             send(.loadMessages)
                         }
                     } catch {
@@ -119,6 +149,11 @@ struct ChatFeature: Reducer {
                     }
                 }
             }
+
+        case .onDisappear:
+            // WebSocket 연결 해제 및 Effect 취소
+            ChatWebSocketManager.shared.disconnect()
+            return .cancel(id: CancelID.webSocket)
 
         case .loadMessages:
             // 채팅방이 아직 생성되지 않은 경우 (첫 메시지 전송 전)
@@ -150,7 +185,9 @@ struct ChatFeature: Reducer {
         case .messagesLoaded(let newMessages, let hasMore):
             state.isLoading = false
 
-            if state.cursorDate == nil {
+            let isInitialLoad = state.cursorDate == nil
+
+            if isInitialLoad {
                 // 초기 로드: API에서 받은 순서 그대로 (오래된 메시지가 위, 최신 메시지가 아래)
                 // Realm에서 이미 로드했다면 병합 (중복 제거)
                 if !state.messages.isEmpty {
@@ -173,22 +210,27 @@ struct ChatFeature: Reducer {
 
             state.hasMoreMessages = hasMore
 
-            // Realm에 저장
-            return .run { send in
-                _ = await MainActor.run {
-                    do {
-                        let realm = try Realm()
-                        try realm.write {
-                            for message in newMessages {
-                                let messageDTO = message.toRealmDTO()
-                                realm.add(messageDTO, update: .modified)
+            // Realm에 저장 + 초기 로드 시 WebSocket 연결
+            return .merge(
+                // Realm 저장
+                .run { send in
+                    _ = await MainActor.run {
+                        do {
+                            let realm = try Realm()
+                            try realm.write {
+                                for message in newMessages {
+                                    let messageDTO = message.toRealmDTO()
+                                    realm.add(messageDTO, update: .modified)
+                                }
                             }
+                        } catch {
+                            // Realm 저장 실패
                         }
-                    } catch {
-                        // Realm 저장 실패
                     }
-                }
-            }
+                },
+                // 초기 로드 완료 후 WebSocket 연결
+                isInitialLoad ? .send(.connectWebSocket) : .none
+            )
 
         case .messageTextChanged(let text):
             state.messageText = text
@@ -569,6 +611,104 @@ struct ChatFeature: Reducer {
 
         case .dismissThemeSheet:
             state.isThemeSheetPresented = false
+            return .none
+
+        // MARK: - WebSocket Actions
+        case .connectWebSocket:
+            guard let roomId = state.chatRoom?.roomId else {
+                print("[ChatFeature] ⚠️ Cannot connect WebSocket: roomId is nil")
+                return .none
+            }
+
+            print("[ChatFeature] 🔌 Connecting WebSocket for room: \(roomId)")
+            return .run { send in
+                // WebSocket 연결 및 콜백 설정
+                print("[ChatFeature] 📝 Setting up WebSocket callbacks")
+
+                ChatWebSocketManager.shared.onConnectionChanged = { isConnected in
+                    Task { @MainActor in
+                        if isConnected {
+                            send(.webSocketConnected)
+                        } else {
+                            send(.webSocketDisconnected)
+                        }
+                    }
+                }
+
+                ChatWebSocketManager.shared.onError = { error in
+                    Task { @MainActor in
+                        send(.webSocketError(error.localizedDescription))
+                    }
+                }
+
+                // WebSocket 연결 (콜백을 파라미터로 전달)
+                ChatWebSocketManager.shared.connect(roomId: roomId) { messages in
+                    print("[ChatFeature] 🎯 onMessageReceived called with \(messages.count) messages")
+                    Task { @MainActor in
+                        print("[ChatFeature] 📤 Sending .webSocketMessageReceived action")
+                        send(.webSocketMessageReceived(messages))
+                    }
+                }
+
+                // Effect가 즉시 완료되지 않도록 대기 (콜백이 설정된 상태 유지)
+                // 채팅 화면이 dismiss될 때 자동으로 cancel됨
+                try? await Task.sleep(for: .seconds(3600)) // 1시간 유지
+            }
+            .cancellable(id: CancelID.webSocket, cancelInFlight: true)
+
+        case .webSocketConnected:
+            state.isWebSocketConnected = true
+            print("[ChatFeature] WebSocket connected")
+            return .none
+
+        case .webSocketDisconnected:
+            state.isWebSocketConnected = false
+            print("[ChatFeature] WebSocket disconnected")
+            return .none
+
+        case .webSocketMessageReceived(let newMessages):
+            print("[ChatFeature] 📨 WebSocket message received: \(newMessages.count) messages")
+            // 실시간으로 받은 메시지를 추가
+            for message in newMessages {
+                print("[ChatFeature] 🔍 Checking message: chatId=\(message.chatId), content=\(message.content ?? "nil")")
+                // 중복 메시지 체크 (chatId 기준)
+                if !state.messages.contains(where: { $0.chatId == message.chatId }) {
+                    print("[ChatFeature] ✅ Adding new message to state")
+                    state.messages.append(message)
+
+                    // Realm에 저장
+                    Task {
+                        _ = await MainActor.run {
+                            do {
+                                let realm = try Realm()
+                                let messageDTO = message.toRealmDTO()
+                                try realm.write {
+                                    realm.add(messageDTO, update: .modified)
+                                }
+                            } catch {
+                                print("[ChatFeature] Failed to save WebSocket message to Realm: \(error)")
+                            }
+                        }
+                    }
+                } else {
+                    print("[ChatFeature] ⚠️ Message already exists, skipping (chatId=\(message.chatId))")
+                }
+
+                // localId로 전송 중인 메시지가 있다면 교체 (내가 보낸 메시지가 서버에서 다시 돌아온 경우)
+                if let index = state.messages.firstIndex(where: {
+                    $0.localId != nil &&
+                    $0.sender.userId == message.sender.userId &&
+                    $0.content == message.content &&
+                    $0.sendStatus == .sending
+                }) {
+                    state.messages[index] = message
+                }
+            }
+            return .none
+
+        case .webSocketError(let errorMessage):
+            print("[ChatFeature] WebSocket error: \(errorMessage)")
+            // TODO: 사용자에게 에러 표시 (필요시)
             return .none
         }
     }

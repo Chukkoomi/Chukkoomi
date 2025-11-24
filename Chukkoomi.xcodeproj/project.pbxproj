@@ -14,6 +14,7 @@
 		EC6A27072ED07A5B00648E9A /* KakaoSDKAuth in Frameworks */ = {isa = PBXBuildFile; productRef = EC6A27062ED07A5B00648E9A /* KakaoSDKAuth */; };
 		EC6A27092ED07A5B00648E9A /* KakaoSDKCommon in Frameworks */ = {isa = PBXBuildFile; productRef = EC6A27082ED07A5B00648E9A /* KakaoSDKCommon */; };
 		EC6A270B2ED07A5B00648E9A /* KakaoSDKUser in Frameworks */ = {isa = PBXBuildFile; productRef = EC6A270A2ED07A5B00648E9A /* KakaoSDKUser */; };
+		ECBCE78D2ED40D010085F83B /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = ECBCE78C2ED40D010085F83B /* SocketIO */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -67,6 +68,7 @@
 				154F15B02EBDE1A20079B157 /* ComposableArchitecture in Frameworks */,
 				EC6A270B2ED07A5B00648E9A /* KakaoSDKUser in Frameworks */,
 				EC6A27072ED07A5B00648E9A /* KakaoSDKAuth in Frameworks */,
+				ECBCE78D2ED40D010085F83B /* SocketIO in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -117,6 +119,7 @@
 				EC6A27062ED07A5B00648E9A /* KakaoSDKAuth */,
 				EC6A27082ED07A5B00648E9A /* KakaoSDKCommon */,
 				EC6A270A2ED07A5B00648E9A /* KakaoSDKUser */,
+				ECBCE78C2ED40D010085F83B /* SocketIO */,
 			);
 			productName = Chukkoomi;
 			productReference = B5CC0CC92EBA3C6D003B6A27 /* Chukkoomi.app */;
@@ -150,6 +153,7 @@
 				154F15AE2EBDE1A10079B157 /* XCRemoteSwiftPackageReference "swift-composable-architecture" */,
 				15163D122EC49DB400843A8A /* XCRemoteSwiftPackageReference "realm-swift" */,
 				EC6A27052ED07A5B00648E9A /* XCRemoteSwiftPackageReference "kakao-ios-sdk" */,
+				ECBCE78B2ED40D010085F83B /* XCRemoteSwiftPackageReference "socket" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B5CC0CCA2EBA3C6D003B6A27 /* Products */;
@@ -426,6 +430,14 @@
 				minimumVersion = 2.26.0;
 			};
 		};
+		ECBCE78B2ED40D010085F83B /* XCRemoteSwiftPackageReference "socket" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/socketio/socket.io-client-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 16.1.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -453,6 +465,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = EC6A27052ED07A5B00648E9A /* XCRemoteSwiftPackageReference "kakao-ios-sdk" */;
 			productName = KakaoSDKUser;
+		};
+		ECBCE78C2ED40D010085F83B /* SocketIO */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = ECBCE78B2ED40D010085F83B /* XCRemoteSwiftPackageReference "socket" */;
+			productName = SocketIO;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
