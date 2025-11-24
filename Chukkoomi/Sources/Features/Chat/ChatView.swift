@@ -31,6 +31,7 @@ struct ChatView: View {
     @State private var opponentProfileImage: UIImage?
     @State private var selectedPhotosItems: [PhotosPickerItem] = []
     @State private var isProcessingPhotos: Bool = false
+    @State private var textEditorHeight: CGFloat = 40 // 기본 1줄 높이 (고정)
 
     var body: some View {
         WithViewStore(store, observe: { $0 }) { viewStore in
@@ -126,19 +127,36 @@ struct ChatView: View {
                     }
                     .disabled(viewStore.isUploadingFiles || isProcessingPhotos)
 
-                    TextField("메시지를 입력하세요", text: viewStore.binding(
-                        get: \.messageText,
-                        send: { .messageTextChanged($0) }
-                    ))
-                    .textFieldStyle(.plain)
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+                    // 자동 높이 조절되는 TextEditor
+                    ZStack(alignment: .topLeading) {
+                        // 플레이스홀더
+                        if viewStore.messageText.isEmpty {
+                            Text("메시지를 입력하세요")
+                                .foregroundColor(Color.gray.opacity(0.5))
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 10)
+                        }
+
+                        TextEditor(text: viewStore.binding(
+                            get: \.messageText,
+                            send: { .messageTextChanged($0) }
+                        ))
+                        .frame(height: textEditorHeight)
+                        .scrollContentBackground(.hidden)
+                        .foregroundColor(.black)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 2)
+                        .onChange(of: viewStore.messageText) { oldValue, newValue in
+                            updateTextEditorHeight(text: newValue)
+                        }
+                    }
                     .background(Color.white)
                     .cornerRadius(20)
 
                     Button(action: {
                         viewStore.send(.sendMessageTapped)
+                        // 전송 후 높이 초기화
+                        textEditorHeight = 40
                     }) {
                         Image(systemName: "paperplane.fill")
                             .foregroundColor(viewStore.messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color(hex: "002D5B") : .white)
@@ -217,6 +235,41 @@ struct ChatView: View {
             return false
         }
         return message.sender.userId == myUserId
+    }
+
+    // TextEditor 높이 자동 조절 (최대 3줄)
+    private func updateTextEditorHeight(text: String) {
+        let lineHeight: CGFloat = 20 // 한 줄 높이
+        let padding: CGFloat = 20 // 상하 패딩
+        let minHeight: CGFloat = 40 // 최소 높이 (기본 1줄)
+        let maxHeight: CGFloat = lineHeight * 3 + padding // 최대 3줄
+
+        // 줄 수 계산
+        let lines = text.components(separatedBy: .newlines)
+        let lineCount = lines.count
+
+        // 각 줄의 너비를 고려한 실제 줄 수 계산
+        let font = UIFont.systemFont(ofSize: 15)
+        let maxWidth = UIScreen.main.bounds.width - 120 // 여유 공간 제외
+
+        var totalLines = 0
+        for line in lines {
+            if line.isEmpty {
+                totalLines += 1
+            } else {
+                let size = (line as NSString).boundingRect(
+                    with: CGSize(width: maxWidth, height: .infinity),
+                    options: .usesLineFragmentOrigin,
+                    attributes: [.font: font],
+                    context: nil
+                )
+                let wrappedLines = Int(ceil(size.height / lineHeight))
+                totalLines += max(1, wrappedLines)
+            }
+        }
+
+        let calculatedHeight = CGFloat(totalLines) * lineHeight + padding
+        textEditorHeight = min(max(minHeight, calculatedHeight), maxHeight)
     }
 
     // 테마별 네비게이션바 색상
