@@ -262,7 +262,7 @@ struct EditVideoFeature {
                 state.isApplyingFilter = false
                 return .none
 
-            case .preProcessFailed(let error):
+            case .preProcessFailed:
                 state.isApplyingFilter = false
                 state.editState.selectedFilter = nil  // 필터 선택 해제
                 return .none

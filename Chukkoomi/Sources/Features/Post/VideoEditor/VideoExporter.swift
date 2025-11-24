@@ -177,7 +177,7 @@ struct VideoExporter {
         let duration = try await asset.load(.duration)
 
         // preferredTransform을 적용한 실제 비디오 크기 계산
-        let videoSize = sizeAfterApplyingTransform(naturalSize: naturalSize, transform: preferredTransform ?? .identity)
+        let videoSize = sizeAfterApplyingTransform(naturalSize: naturalSize, transform: preferredTransform)
 
         // 목표 크기 계산 (videoSize 기준)
         let targetSize = CompressHelper.resizedSizeForiPhoneMax(
@@ -210,7 +210,7 @@ struct VideoExporter {
             trimStartTime: editState.trimStartTime,
             sourceTrackIDs: [NSNumber(value: videoTrack.trackID)],
             layerInstructions: [layerInstruction],
-            preferredTransform: preferredTransform ?? .identity,
+            preferredTransform: preferredTransform,
             renderSize: targetSize
         )
 
@@ -229,7 +229,7 @@ struct VideoExporter {
         let preferredTransform = try await videoTrack.load(.preferredTransform)
 
         // preferredTransform을 적용한 실제 비디오 크기
-        let videoSize = sizeAfterApplyingTransform(naturalSize: naturalSize, transform: preferredTransform ?? .identity)
+        let videoSize = sizeAfterApplyingTransform(naturalSize: naturalSize, transform: preferredTransform)
 
         // 목표 크기 계산
         let targetSize = CompressHelper.resizedSizeForiPhoneMax(
@@ -259,7 +259,7 @@ struct VideoExporter {
         let preferredTransform = try await videoTrack.load(.preferredTransform)
 
         // preferredTransform을 적용한 실제 비디오 크기
-        let videoSize = sizeAfterApplyingTransform(naturalSize: naturalSize, transform: preferredTransform ?? .identity)
+        let videoSize = sizeAfterApplyingTransform(naturalSize: naturalSize, transform: preferredTransform)
 
         // 목표 크기 계산
         let targetSize = CompressHelper.resizedSizeForiPhoneMax(

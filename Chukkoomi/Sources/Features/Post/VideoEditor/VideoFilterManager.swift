@@ -50,9 +50,8 @@ struct VideoFilterManager {
         }
         
         let naturalSize = try? await videoTrack.load(.naturalSize)
-        let preferredTransform = try? await videoTrack.load(.preferredTransform)
         
-        guard let naturalSize = naturalSize else {
+        guard let naturalSize else {
             return nil
         }
         
@@ -69,41 +68,6 @@ struct VideoFilterManager {
         
         // renderSize 계산
         let renderSize = targetSize ?? adjustedNaturalSize
-
-        // renderSize 방향 확인
-        let isRenderSizePortrait = renderSize.width < renderSize.height
-
-        // renderSize와 naturalSize의 방향이 다르면 90도 회전 필요
-        let needsRotation = isRenderSizePortrait != isNaturalSizePortrait
-        let correctedTransform: CGAffineTransform
-        if needsRotation {
-            correctedTransform = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 0, ty: 0)
-        } else {
-            correctedTransform = preferredTransform ?? .identity
-        }
-
-
-        // aspect-fit 스케일 계산 (회전 전 naturalSize 기준)
-        let scaleX = renderSize.width / (needsRotation ? naturalSize.height : naturalSize.width)
-        let scaleY = renderSize.height / (needsRotation ? naturalSize.width : naturalSize.height)
-        let scale = min(scaleX, scaleY)
-        
-        // 중앙 정렬을 위한 offset 계산 (원본 naturalSize 기준)
-        let scaledWidth = naturalSize.width * scale
-        let scaledHeight = naturalSize.height * scale
-
-        let offsetX: CGFloat
-        let offsetY: CGFloat
-
-        if needsRotation {
-            // 회전하는 경우: 90도 회전 후 중앙 정렬
-            offsetX = (renderSize.width - scaledHeight) / 2
-            offsetY = (renderSize.height - scaledWidth) / 2
-        } else {
-            // 회전 불필요: 일반 중앙 정렬
-            offsetX = (renderSize.width - scaledWidth) / 2
-            offsetY = (renderSize.height - scaledHeight) / 2
-        }
         
         // AVVideoComposition 생성 (필터 + 리사이즈를 CIImage로 처리)
         let composition = AVMutableVideoComposition(
@@ -155,7 +119,6 @@ struct VideoFilterManager {
                 }
 
                 // 4. 중앙 정렬을 위한 offset 계산 (extent 기준)
-                let currentExtent = outputImage.extent
                 let scaledWidth = sourceExtent.width * actualScale
                 let scaledHeight = sourceExtent.height * actualScale
 

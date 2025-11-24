@@ -134,6 +134,7 @@ struct EditVideoView: View {
             .overlay {
                 if viewStore.isExporting {
                     ExportingOverlayView(progress: viewStore.exportProgress)
+                        .ignoresSafeArea()
                 }
             }
             .overlay {
@@ -261,6 +262,7 @@ private struct CustomVideoPlayerView: UIViewRepresentable {
 
         // 배경음악 관련
         var audioPlayers: [UUID: AVPlayer] = [:]  // 배경음악 ID별 플레이어
+        var musicDurations: [UUID: Double] = [:]  // 배경음악 ID별 duration 캐시
         var currentBackgroundMusics: [EditVideoFeature.BackgroundMusic] = []
         var currentVideoTime: Double = 0.0
 
@@ -530,12 +532,13 @@ private struct CustomVideoPlayerView: UIViewRepresentable {
             // 현재 배경음악 ID 목록
             let currentMusicIDs = Set(backgroundMusics.map { $0.id })
 
-            // 1. 삭제된 배경음악의 플레이어 제거
+            // 1. 삭제된 배경음악의 플레이어 및 duration 캐시 제거
             let oldMusicIDs = Set(audioPlayers.keys)
             let removedMusicIDs = oldMusicIDs.subtracting(currentMusicIDs)
             for musicID in removedMusicIDs {
                 audioPlayers[musicID]?.pause()
                 audioPlayers.removeValue(forKey: musicID)
+                musicDurations.removeValue(forKey: musicID)
             }
 
             // 2. 각 배경음악에 대해 플레이어 생성 또는 업데이트
@@ -550,6 +553,15 @@ private struct CustomVideoPlayerView: UIViewRepresentable {
                     let newPlayer = AVPlayer(playerItem: playerItem)
                     newPlayer.volume = music.volume
                     audioPlayers[music.id] = newPlayer
+
+                    // duration 비동기 로드 및 캐시
+                    let musicID = music.id
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        if let duration = try? await audioAsset.load(.duration) {
+                            self.musicDurations[musicID] = duration.seconds
+                        }
+                    }
                 }
             }
 
@@ -572,8 +584,8 @@ private struct CustomVideoPlayerView: UIViewRepresentable {
                     // 음악 내에서의 상대 시간 계산 (루프를 위해)
                     let relativeTime = videoTime - music.startTime
 
-                    // 배경음악 재생
-                    if let audioDuration = audioPlayer.currentItem?.asset.duration.seconds,
+                    // 캐시된 duration 사용
+                    if let audioDuration = musicDurations[music.id],
                        audioDuration.isFinite {
                         // 음악 길이로 나눈 나머지로 루프
                         let loopedTime = relativeTime.truncatingRemainder(dividingBy: audioDuration)
@@ -1732,13 +1744,13 @@ private class SubtitleBlockUIView: UIView {
     }
     
     private func setupViews() {
-        backgroundColor = UIColor.systemBlue.withAlphaComponent(0.6)
+        backgroundColor = UIColor.systemRed.withAlphaComponent(0.6)
         layer.cornerRadius = 4
         clipsToBounds = true
 
         // 왼쪽 핸들
         leftHandle = UIView()
-        leftHandle.backgroundColor = UIColor.systemBlue
+        leftHandle.backgroundColor = UIColor.systemRed
         leftHandle.layer.cornerRadius = 4
         addSubview(leftHandle)
 
@@ -1761,7 +1773,7 @@ private class SubtitleBlockUIView: UIView {
 
         // 오른쪽 핸들
         rightHandle = UIView()
-        rightHandle.backgroundColor = UIColor.systemBlue
+        rightHandle.backgroundColor = UIColor.systemRed
         rightHandle.layer.cornerRadius = 4
         addSubview(rightHandle)
 
@@ -2265,13 +2277,13 @@ private struct FilterButton: View {
                     .customRadius()
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(isSelected ? Color.blue : Color.clear, lineWidth: 2)
+                            .strokeBorder(isSelected ? Color(uiColor: UIColor.systemIndigo) : Color.clear, lineWidth: 4)
                     )
 
                 // 필터 이름
                 Text(filter.displayName)
                     .font(.appCaption)
-                    .foregroundStyle(isSelected ? .blue : .black)
+                    .foregroundStyle(isSelected ? Color(uiColor: UIColor.systemIndigo) : .black)
             }
         }
     }
