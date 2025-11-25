@@ -341,7 +341,7 @@ struct EventRow: View {
         switch event.type {
         case .goal:
             // 골 아이콘 - "기본 프로필2" 이미지 사용
-            Image("기본 프로필2")
+            Image("DefaultProfile2")
                 .resizable()
                 .scaledToFit()
                 .clipShape(Circle())
