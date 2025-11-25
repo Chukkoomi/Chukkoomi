@@ -196,14 +196,14 @@ struct MatchCard: View {
     // 홈팀 이벤트 (골/카드)
     private var homeTeamEvents: [MatchEvent] {
         match.events
-            .filter { $0.teamName == match.homeTeamName }
+            .filter { $0.isHomeTeam }
             .sorted { $0.minute < $1.minute }
     }
 
     // 원정팀 이벤트 (골/카드)
     private var awayTeamEvents: [MatchEvent] {
         match.events
-            .filter { $0.teamName == match.awayTeamName }
+            .filter { !$0.isHomeTeam }
             .sorted { $0.minute < $1.minute }
     }
 
@@ -308,7 +308,7 @@ struct EventRow: View {
         HStack(spacing: 8) {
             if isHomeTeam {
                 // 홈팀: 이름 - 아이콘 - 시간 (trailing 정렬)
-                Text(event.playerName)
+                Text(event.player.name)
                     .font(.caption)
                     .foregroundColor(.primary)
                     .lineLimit(1)
@@ -328,7 +328,7 @@ struct EventRow: View {
                 eventIcon
                     .frame(width: 20, height: 20)
 
-                Text(event.playerName)
+                Text(event.player.name)
                     .font(.caption)
                     .foregroundColor(.primary)
                     .lineLimit(1)
