@@ -251,11 +251,12 @@ struct OtherProfileFeature {
                     )
 
                     let postImages = response.data.compactMap { dto -> PostImage? in
-                        guard dto.files.count >= 2 else { return nil }
-                        let thumbnailPath = dto.files[1] // 썸네일
-                        let originalPath = dto.files[0] // 원본
+                        let post = dto.toDomain
+                        guard post.files.count >= 2 else { return nil }
+                        let thumbnailPath = post.files[1] // 썸네일
+                        let originalPath = post.files[0] // 원본
                         let isVideo = MediaTypeHelper.isVideoPath(originalPath)
-                        return PostImage(id: dto.postId, imagePath: thumbnailPath, isVideo: isVideo)
+                        return PostImage(id: post.id, imagePath: thumbnailPath, isVideo: isVideo)
                     }
 
                     await send(.postImagesLoaded(postImages, response.nextCursor))
@@ -285,11 +286,12 @@ struct OtherProfileFeature {
                     )
 
                     let postImages = response.data.compactMap { dto -> PostImage? in
-                        guard dto.files.count >= 2 else { return nil }
-                        let thumbnailPath = dto.files[1] // 썸네일
-                        let originalPath = dto.files[0] // 원본
+                        let post = dto.toDomain
+                        guard post.files.count >= 2 else { return nil }
+                        let thumbnailPath = post.files[1] // 썸네일
+                        let originalPath = post.files[0] // 원본
                         let isVideo = MediaTypeHelper.isVideoPath(originalPath)
-                        return PostImage(id: dto.postId, imagePath: thumbnailPath, isVideo: isVideo)
+                        return PostImage(id: post.id, imagePath: thumbnailPath, isVideo: isVideo)
                     }
 
                     await send(.postImagesLoaded(postImages, response.nextCursor))

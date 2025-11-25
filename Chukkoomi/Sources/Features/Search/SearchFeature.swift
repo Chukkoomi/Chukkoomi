@@ -63,8 +63,12 @@ struct SearchFeature {
                         let response = try await PostService.shared.fetchPosts(query: query)
 
                         let posts = response.data.compactMap { dto -> PostItem? in
-                            guard let firstFile = dto.files.first else { return nil }
-                            return PostItem(id: dto.postId, imagePath: firstFile)
+                            let post = dto.toDomain
+                            guard post.files.count >= 2 else { return nil }
+                            let thumbnailPath = post.files[1] // 썸네일
+                            let originalPath = post.files[0] // 원본
+                            let isVideo = MediaTypeHelper.isVideoPath(originalPath)
+                            return PostItem(id: post.id, imagePath: thumbnailPath, isVideo: isVideo)
                         }
 
                         await send(.postsLoaded(posts, response.nextCursor))
@@ -225,8 +229,12 @@ struct SearchFeature {
                         let response = try await PostService.shared.fetchPosts(query: query)
 
                         let posts = response.data.compactMap { dto -> PostItem? in
-                            guard let firstFile = dto.files.first else { return nil }
-                            return PostItem(id: dto.postId, imagePath: firstFile)
+                            let post = dto.toDomain
+                            guard post.files.count >= 2 else { return nil }
+                            let thumbnailPath = post.files[1] // 썸네일
+                            let originalPath = post.files[0] // 원본
+                            let isVideo = MediaTypeHelper.isVideoPath(originalPath)
+                            return PostItem(id: post.id, imagePath: thumbnailPath, isVideo: isVideo)
                         }
 
                         await send(.nextPageLoaded(posts, response.nextCursor))
@@ -298,10 +306,10 @@ extension SearchFeature {
         let imagePath: String
         let isVideo: Bool
 
-        init(id: String, imagePath: String) {
+        init(id: String, imagePath: String, isVideo: Bool = false) {
             self.id = id
             self.imagePath = imagePath
-            self.isVideo = MediaTypeHelper.isVideoPath(imagePath)
+            self.isVideo = isVideo
         }
     }
 }
