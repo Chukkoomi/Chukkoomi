@@ -59,7 +59,7 @@ struct SearchFeature {
                 // 초기 목록은 fetchPosts (limit = 12)
                 return .run { send in
                     do {
-                        let query = PostRouter.ListQuery(next: nil, limit: 12, category: nil)
+                        let query = PostRouter.ListQuery(next: nil, limit: 12, category: FootballTeams.teamsForHeader)
                         let response = try await PostService.shared.fetchPosts(query: query)
 
                         let posts = response.data.compactMap { dto -> PostItem? in
@@ -221,7 +221,7 @@ struct SearchFeature {
                 state.isLoadingNextPage = true
                 return .run { send in
                     do {
-                        let query = PostRouter.ListQuery(next: next, limit: 12, category: nil)
+                        let query = PostRouter.ListQuery(next: next, limit: 12, category: FootballTeams.teamsForHeader)
                         let response = try await PostService.shared.fetchPosts(query: query)
 
                         let posts = response.data.compactMap { dto -> PostItem? in

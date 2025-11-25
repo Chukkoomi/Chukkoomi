@@ -220,7 +220,7 @@ struct MyProfileFeature {
 
                 return .run { send in
                     do {
-                        let query = PostRouter.ListQuery(next: nil, limit: 12, category: nil)
+                        let query = PostRouter.ListQuery(next: nil, limit: 12, category: FootballTeams.teamsForHeader)
                         let response = try await NetworkManager.shared.performRequest(
                             PostRouter.fetchUserPosts(userId: userId, query),
                             as: PostListResponseDTO.self
@@ -272,7 +272,7 @@ struct MyProfileFeature {
                 state.isLoadingNextPage = true
                 return .run { send in
                     do {
-                        let query = PostRouter.ListQuery(next: next, limit: 12, category: nil)
+                        let query = PostRouter.ListQuery(next: next, limit: 12, category: FootballTeams.teamsForHeader)
                         let response = try await NetworkManager.shared.performRequest(
                             PostRouter.fetchUserPosts(userId: userId, query),
                             as: PostListResponseDTO.self
