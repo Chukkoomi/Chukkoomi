@@ -65,22 +65,10 @@ private struct ScoreView: View {
                     // 홈 팀
                     VStack(spacing: AppPadding.small) {
                         if let homeTeam = homeTeam {
-                            ZStack {
-                                // 흰색 배경 (이미지 형태로 마스킹)
-                                Color.white
-                                    .mask(
-                                        Image(homeTeam.logoImageName)
-                                            .resizable()
-                                            .scaledToFit()
-                                    )
-                                    .frame(width: 60, height: 60)
-
-                                // 실제 이미지
-                                Image(homeTeam.logoImageName)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 60, height: 60)
-                            }
+                            Image(homeTeam.logoImageName)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 60, height: 60)
                         } else {
                             Circle()
                                 .fill(Color.white.opacity(0.3))
