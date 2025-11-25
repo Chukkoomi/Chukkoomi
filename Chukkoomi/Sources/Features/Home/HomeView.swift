@@ -72,9 +72,9 @@ struct HomeView: View {
                     .clipped()
                 } else {
                     // 썸네일이 없을 때 플레이스홀더
-//                    Image("blackImage")
-//                        .resizable()
-                    Color.black
+                    Image("highlight2")
+                        .resizable()
+//                    Color.black
                         .aspectRatio(16/9, contentMode: .fit)
                 }
 
