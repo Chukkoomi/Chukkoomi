@@ -415,5 +415,6 @@ private struct PlayerInfoView: View {
                 .lineLimit(1)
                 .shadow(color: .black.opacity(0.8), radius: 2, x: 0, y: 0)
         }
+        .frame(width: 72)
     }
 }
