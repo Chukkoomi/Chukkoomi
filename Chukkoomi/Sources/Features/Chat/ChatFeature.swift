@@ -54,11 +54,11 @@ struct ChatFeature: Reducer {
 
         var imageName: String? {
             switch self {
-            case .default: return "기본 테마"
-            case .theme1: return "테마1"
-            case .theme2: return "테마2"
-            case .theme3: return "테마3"
-            case .theme4: return "테마4"
+            case .default: return "Default Theme"
+            case .theme1: return "Theme1"
+            case .theme2: return "Theme2"
+            case .theme3: return "Theme3"
+            case .theme4: return "Theme4"
             }
         }
     }
