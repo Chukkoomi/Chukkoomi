@@ -324,6 +324,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Chukkoomi/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "추꾸미";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "프로필 사진 및 게시물에 사용할 사진을 선택하기 위해 앨범 접근 권한이 필요합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -361,6 +362,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Chukkoomi/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "추꾸미";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "프로필 사진 및 게시물에 사용할 사진을 선택하기 위해 앨범 접근 권한이 필요합니다.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
