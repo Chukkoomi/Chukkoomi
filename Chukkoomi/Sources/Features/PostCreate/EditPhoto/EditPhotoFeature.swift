@@ -25,7 +25,7 @@ struct EditPhotoFeature {
 
         var icon: Image {
             switch self {
-            case .text: return AppIcon.text
+            case .text: return AppIcon.subtitle
             case .draw: return AppIcon.draw
             case .filter: return AppIcon.filter
             case .sticker: return AppIcon.sticker
