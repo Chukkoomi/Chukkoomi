@@ -70,6 +70,7 @@ struct ChatListView: View {
             ) { userSearchStore in
                 UserSearchView(store: userSearchStore)
             }
+            .alert(store: store.scope(state: \.$alert, action: \.alert))
             .onAppear {
                 viewStore.send(.onAppear)
             }
