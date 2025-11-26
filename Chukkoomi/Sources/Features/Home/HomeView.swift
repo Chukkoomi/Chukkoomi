@@ -11,7 +11,7 @@ import AVKit
 
 struct HomeView: View {
     let store: StoreOf<HomeFeature>
-
+    
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -54,9 +54,7 @@ struct HomeView: View {
     // MARK: - 영상 섹션
     private func videoSection() -> some View {
         VStack(spacing: 0) {
-            // 비디오 썸네일 (16:9 비율)
-            ZStack {
-                // 썸네일 이미지 (나중에 서버에서 받을 예정)
+            ZStack(alignment: .bottomTrailing) {
                 if let thumbnailURL = store.videoThumbnailURL {
                     AsyncMediaImageView(
                         imagePath: thumbnailURL,
@@ -66,23 +64,26 @@ struct HomeView: View {
                     .aspectRatio(16/9, contentMode: .fill)
                     .clipped()
                 } else {
-                    // 썸네일이 없을 때 플레이스홀더
                     Image("highlight2")
                         .resizable()
-                    //                    Color.black
                         .aspectRatio(16/9, contentMode: .fit)
                 }
-                
-                // 재생 버튼 오버레이
-                //                Image(systemName: "play.circle.fill")
-                //                    .font(.system(size: 60))
-                //                    .foregroundColor(.white.opacity(0.8))
+                                
+                Text("Play")
+                    .font(Font.appTitle)
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 11)
+                    .background(AppColor.pointColor)
+                    .clipShape(Capsule())
+                    .shadow(color: .black.opacity(0.4), radius: 8, x: 0, y: 4)
+                    .padding(16)
+                    .buttonWrapper {
+                        store.send(.videoThumbnailTapped)
+                    }
             }
             .cornerRadius(20)
             .padding(.horizontal, 20)
-            .buttonWrapper {
-                store.send(.videoThumbnailTapped)
-            }
         }
         .fullScreenCover(isPresented: Binding(
             get: { store.isShowingFullscreenVideo },
@@ -101,11 +102,8 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("TEAM")
                 .font(.luckiestGuyMedium)
-            //                .font(.title2)
-            //                .fontWeight(.bold)
                 .padding(.horizontal, 20)
             
-            // 가로 스크롤
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 16) {
                     ForEach(store.teams, id: \.self) { team in
@@ -142,7 +140,6 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
             } else {
-                // 모든 경기 표시 (스크롤 가능)
                 VStack(spacing: 16) {
                     ForEach(store.matches) { match in
                         Button {
