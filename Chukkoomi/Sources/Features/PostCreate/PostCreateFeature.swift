@@ -171,8 +171,6 @@ struct PostCreateFeature {
                 return true
             case (.galleryPicker, .galleryPicker):
                 return true
-            case let (.galleryPicker(lhs), .galleryPicker(rhs)):
-                return lhs == rhs
             case let (.imageViewer(lhs), .imageViewer(rhs)):
                 return lhs == rhs
             case let (.delegate(lhs), .delegate(rhs)):

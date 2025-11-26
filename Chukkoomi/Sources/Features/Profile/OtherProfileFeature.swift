@@ -28,6 +28,7 @@ struct OtherProfileFeature {
         @PresentationState var followList: FollowListFeature.State?
         @PresentationState var chat: ChatFeature.State?
         @PresentationState var postDetail: PostFeature.State?
+        @PresentationState var alert: AlertState<Action.Alert>?
 
         // Computed properties
         var nickname: String {
@@ -79,6 +80,14 @@ struct OtherProfileFeature {
         case followList(PresentationAction<FollowListFeature.Action>)
         case chat(PresentationAction<ChatFeature.Action>)
         case postDetail(PresentationAction<PostFeature.Action>)
+        case alert(PresentationAction<Alert>)
+
+        // Error handling
+        case profileLoadFailed
+        case followToggleFailed
+        case postLoadFailed
+
+        enum Alert: Equatable {}
     }
 
     // MARK: - Body
@@ -104,8 +113,7 @@ struct OtherProfileFeature {
                     await send(.myProfileLoaded(my))
                     await send(.profileLoaded(other))
                 } catch {
-                    // TODO: 에러 처리
-                    print("프로필 로드 실패: \(error)")
+                    await send(.profileLoadFailed)
                 }
             }
 
@@ -118,7 +126,7 @@ struct OtherProfileFeature {
                     ).toDomain
                     await send(.followToggled(response.status))
                 } catch {
-                    print("팔로우 토글 실패: \(error)")
+                    await send(.followToggleFailed)
                 }
             }
 
@@ -261,7 +269,6 @@ struct OtherProfileFeature {
 
                     await send(.postImagesLoaded(postImages, response.nextCursor))
                 } catch {
-                    print("게시물 로드 실패: \(error)")
                     await send(.postImagesLoaded([], nil))
                 }
             }
@@ -296,7 +303,6 @@ struct OtherProfileFeature {
 
                     await send(.postImagesLoaded(postImages, response.nextCursor))
                 } catch {
-                    print("다음 페이지 로드 실패: \(error)")
                     await send(.postImagesLoaded([], nil))
                 }
             }
@@ -319,7 +325,7 @@ struct OtherProfileFeature {
                     let post = dto.toDomain
                     await send(.postLoaded(post))
                 } catch {
-                    print("게시글 단건 조회 실패: \(error)")
+                    await send(.postLoadFailed)
                 }
             }
 
@@ -340,6 +346,46 @@ struct OtherProfileFeature {
 
         case .chat:
             return .none
+
+        case .profileLoadFailed:
+            state.isLoading = false
+            state.alert = AlertState {
+                TextState("프로필 로드 실패")
+            } actions: {
+                ButtonState(role: .cancel) {
+                    TextState("확인")
+                }
+            } message: {
+                TextState("프로필 정보를 불러올 수 없습니다.\n다시 시도해주세요.")
+            }
+            return .none
+
+        case .followToggleFailed:
+            state.alert = AlertState {
+                TextState("팔로우 실패")
+            } actions: {
+                ButtonState(role: .cancel) {
+                    TextState("확인")
+                }
+            } message: {
+                TextState("팔로우 처리에 실패했습니다.\n다시 시도해주세요.")
+            }
+            return .none
+
+        case .postLoadFailed:
+            state.alert = AlertState {
+                TextState("게시글 로드 실패")
+            } actions: {
+                ButtonState(role: .cancel) {
+                    TextState("확인")
+                }
+            } message: {
+                TextState("게시글을 불러올 수 없습니다.\n다시 시도해주세요.")
+            }
+            return .none
+
+        case .alert:
+            return .none
         }
         }
         .ifLet(\.$followList, action: \.followList) {
@@ -351,6 +397,7 @@ struct OtherProfileFeature {
         .ifLet(\.$postDetail, action: \.postDetail) {
             PostFeature()
         }
+        .ifLet(\.$alert, action: \.alert)
     }
 }
 

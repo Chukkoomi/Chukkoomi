@@ -143,5 +143,6 @@ private struct EditProfileNavigation: ViewModifier {
                     GalleryPickerView(store: store)
                 }
             }
+            .alert(store: store.scope(state: \.$alert, action: \.alert))
     }
 }

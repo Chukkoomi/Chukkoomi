@@ -20,6 +20,7 @@ struct EditProfileFeature {
         var isLoading: Bool = false
 
         @PresentationState var galleryPicker: GalleryPickerFeature.State?
+        @PresentationState var alert: AlertState<Action.Alert>?
 
         // Validation
         var isNicknameLengthValid: Bool {
@@ -66,9 +67,13 @@ struct EditProfileFeature {
         case nicknameChanged(String)
         case introduceChanged(String)
         case profileUpdated(Profile)
+        case profileUpdateFailed
         case dismiss
         case galleryPicker(PresentationAction<GalleryPickerFeature.Action>)
         case profileImageCompressed(Data)
+        case alert(PresentationAction<Alert>)
+
+        enum Alert: Equatable {}
     }
 
     // MARK: - Body
@@ -109,10 +114,22 @@ struct EditProfileFeature {
 
                     await send(.profileUpdated(updatedProfile))
                 } catch {
-                    // TODO: 에러 처리
-                    print("프로필 업데이트 실패: \(error)")
+                    await send(.profileUpdateFailed)
                 }
             }
+
+        case .profileUpdateFailed:
+            state.isLoading = false
+            state.alert = AlertState {
+                TextState("프로필 업데이트 실패")
+            } actions: {
+                ButtonState(role: .cancel) {
+                    TextState("확인")
+                }
+            } message: {
+                TextState("프로필 업데이트에 실패했습니다.\n다시 시도해주세요.")
+            }
+            return .none
 
         case .profileImageTapped:
             state.galleryPicker = GalleryPickerFeature.State(
@@ -153,10 +170,14 @@ struct EditProfileFeature {
 
         case .galleryPicker:
             return .none
+
+        case .alert:
+            return .none
             }
         }
         .ifLet(\.$galleryPicker, action: \.galleryPicker) {
             GalleryPickerFeature()
         }
+        .ifLet(\.$alert, action: \.alert)
     }
 }

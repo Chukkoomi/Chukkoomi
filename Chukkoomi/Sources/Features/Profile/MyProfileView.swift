@@ -287,5 +287,6 @@ private struct MyProfileNavigation: ViewModifier {
             ) { store in
                 PostView(store: store)
             }
+            .alert(store: store.scope(state: \.$alert, action: \.alert))
     }
 }

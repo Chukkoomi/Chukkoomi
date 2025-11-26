@@ -27,6 +27,7 @@ struct SearchFeature {
 
         @PresentationState var postDetail: PostFeature.State?
         @PresentationState var hashtagSearch: PostFeature.State?
+        @PresentationState var alert: AlertState<Action.Alert>?
     }
     
     // MARK: - Action
@@ -48,6 +49,12 @@ struct SearchFeature {
         case postItemAppeared(String)
         case postDetail(PresentationAction<PostFeature.Action>)
         case hashtagSearch(PresentationAction<PostFeature.Action>)
+        case postsLoadFailed
+        case nextPageLoadFailed
+        case postLoadFailed
+        case alert(PresentationAction<Alert>)
+
+        enum Alert: Equatable {}
     }
     
     // MARK: - Body
@@ -74,7 +81,7 @@ struct SearchFeature {
                         await send(.postsLoaded(posts, response.nextCursor))
                     } catch {
                         print("Failed to load posts: \(error)")
-                        await send(.postsLoaded([], nil))
+                        await send(.postsLoadFailed)
                     }
                 }
                 
@@ -239,8 +246,7 @@ struct SearchFeature {
 
                         await send(.nextPageLoaded(posts, response.nextCursor))
                     } catch {
-                        print("Failed to load next page: \(error)")
-                        await send(.nextPageLoaded([], nil))
+                        await send(.nextPageLoadFailed)
                     }
                 }
 
@@ -269,7 +275,7 @@ struct SearchFeature {
                         let post = dto.toDomain
                         await send(.postLoaded(post))
                     } catch {
-                        print("게시글 단건 조회 실패: \(error)")
+                        await send(.postLoadFailed)
                     }
                 }
 
@@ -288,6 +294,47 @@ struct SearchFeature {
 
             case .hashtagSearch:
                 return .none
+
+            case .postsLoadFailed:
+                state.isLoading = false
+                state.alert = AlertState {
+                    TextState("게시글 로드 실패")
+                } actions: {
+                    ButtonState(role: .cancel) {
+                        TextState("확인")
+                    }
+                } message: {
+                    TextState("게시글을 불러오는데 실패했습니다.\n다시 시도해주세요.")
+                }
+                return .none
+
+            case .nextPageLoadFailed:
+                state.isLoadingNextPage = false
+                state.alert = AlertState {
+                    TextState("게시글 로드 실패")
+                } actions: {
+                    ButtonState(role: .cancel) {
+                        TextState("확인")
+                    }
+                } message: {
+                    TextState("추가 게시글을 불러오는데 실패했습니다.")
+                }
+                return .none
+
+            case .postLoadFailed:
+                state.alert = AlertState {
+                    TextState("게시글 조회 실패")
+                } actions: {
+                    ButtonState(role: .cancel) {
+                        TextState("확인")
+                    }
+                } message: {
+                    TextState("게시글을 불러오는데 실패했습니다.\n다시 시도해주세요.")
+                }
+                return .none
+
+            case .alert:
+                return .none
             }
         }
         .ifLet(\.$postDetail, action: \.postDetail) {
@@ -296,6 +343,7 @@ struct SearchFeature {
         .ifLet(\.$hashtagSearch, action: \.hashtagSearch) {
             PostFeature()
         }
+        .ifLet(\.$alert, action: \.alert)
     }
 }
 

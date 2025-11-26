@@ -21,6 +21,7 @@ struct UserSearchFeature {
         var useDelegate: Bool = false // delegate 사용 여부 (SharePost에서 사용)
 
         @PresentationState var otherProfile: OtherProfileFeature.State?
+        @PresentationState var alert: AlertState<Action.Alert>?
     }
 
     // MARK: - Action
@@ -34,6 +35,10 @@ struct UserSearchFeature {
 
         // Navigation
         case otherProfile(PresentationAction<OtherProfileFeature.Action>)
+        case alert(PresentationAction<Alert>)
+
+        // Error handling
+        case searchFailed
 
         // Delegate
         case delegate(Delegate)
@@ -42,6 +47,8 @@ struct UserSearchFeature {
             case userSelected(User)
             case dismiss
         }
+
+        enum Alert: Equatable {}
     }
 
     // MARK: - Body
@@ -87,9 +94,7 @@ struct UserSearchFeature {
 
                         await send(.searchResultsLoaded(searchResults))
                     } catch {
-                        // TODO: 에러 처리
-                        print("유저 검색 실패: \(error)")
-                        await send(.searchResultsLoaded([]))
+                        await send(.searchFailed)
                     }
                 }
 
@@ -123,6 +128,23 @@ struct UserSearchFeature {
             case .closeButtonTapped:
                 return .send(.delegate(.dismiss))
 
+            case .searchFailed:
+                state.isLoading = false
+                state.searchResults = []
+                state.alert = AlertState {
+                    TextState("검색 실패")
+                } actions: {
+                    ButtonState(role: .cancel) {
+                        TextState("확인")
+                    }
+                } message: {
+                    TextState("사용자 검색에 실패했습니다.\n다시 시도해주세요.")
+                }
+                return .none
+
+            case .alert:
+                return .none
+
             case .otherProfile:
                 return .none
             }
@@ -130,6 +152,7 @@ struct UserSearchFeature {
         .ifLet(\.$otherProfile, action: \.otherProfile) {
             OtherProfileFeature()
         }
+        .ifLet(\.$alert, action: \.alert)
     }
 }
 

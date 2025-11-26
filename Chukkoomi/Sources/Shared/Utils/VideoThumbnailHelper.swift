@@ -32,7 +32,6 @@ actor VideoThumbnailExtractor {
 
             return thumbnailData
         } catch {
-            print("썸네일 생성 실패: \(error)")
             // 임시 파일 삭제 시도
             try? FileManager.default.removeItem(at: tempURL)
             return nil
@@ -55,7 +54,6 @@ actor VideoThumbnailExtractor {
             // JPEG 데이터로 변환
             return uiImage.jpegData(compressionQuality: 0.8)
         } catch {
-            print("썸네일 생성 실패: \(error)")
             return nil
         }
     }

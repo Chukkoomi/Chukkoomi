@@ -1,5 +1,5 @@
 //
-//  VideoCompositorWithSubtitles.swift
+//  VideoCompositor.swift
 //  Chukkoomi
 //
 //  Created by 김영훈 on 11/20/25.
@@ -48,7 +48,7 @@ final class SubtitleVideoCompositionInstruction: NSObject, AVVideoCompositionIns
 }
 
 /// 필터와 자막을 프레임별로 처리하는 커스텀 Video Compositor
-final class VideoCompositorWithSubtitles: NSObject, AVVideoCompositing {
+final class VideoCompositor: NSObject, AVVideoCompositing {
     
     // MARK: - Properties
     
@@ -187,7 +187,20 @@ final class VideoCompositorWithSubtitles: NSObject, AVVideoCompositing {
 
             // 6. 필터 적용 (리사이즈 후 작은 이미지에 적용 - 효율적)
             if let filter = instruction.filter {
-                outputImage = self.applyFilter(filter, to: outputImage)
+                do {
+                    outputImage = try self.applyFilter(filter, to: outputImage)
+                } catch {
+                    // 필터 적용 실패 시 에러로 처리
+                    asyncVideoCompositionRequest.finish(with: NSError(
+                        domain: "VideoCompositor",
+                        code: -2,
+                        userInfo: [
+                            NSLocalizedDescriptionKey: "필터 적용 실패",
+                            NSLocalizedFailureReasonErrorKey: error.localizedDescription
+                        ]
+                    ))
+                    return
+                }
             }
 
             // 7. 자막 적용
@@ -224,13 +237,14 @@ final class VideoCompositorWithSubtitles: NSObject, AVVideoCompositing {
     
     // MARK: - Private Helper Methods
     
-    /// 필터 적용 (VideoFilterHelper 사용)
-    private func applyFilter(_ filter: VideoFilter, to image: CIImage) -> CIImage {
+    /// 필터 적용 (VideoFilterManager 사용)
+    /// - Throws: VideoFilterError
+    private func applyFilter(_ filter: VideoFilter, to image: CIImage) throws -> CIImage {
         // AnimeGAN은 너무 무거워서 실시간 처리 불가 - 커스텀 compositor에서는 스킵
         if filter == .animeGANHayao {
             return image
         }
-        return VideoFilterHelper.applyFilter(filter, to: image)
+        return try VideoFilterManager.applyFilterThrowing(filter, to: image)
     }
     
     /// 현재 시간에 해당하는 자막 찾기

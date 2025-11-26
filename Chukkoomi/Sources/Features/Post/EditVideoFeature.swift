@@ -149,6 +149,8 @@ struct EditVideoFeature {
 
         enum Alert: Equatable {
             case confirmSubtitleOverlapError
+            case confirmExportError
+            case confirmFilterError
         }
 
         // Delegate
@@ -262,9 +264,18 @@ struct EditVideoFeature {
                 state.isApplyingFilter = false
                 return .none
 
-            case .preProcessFailed:
+            case .preProcessFailed(let error):
                 state.isApplyingFilter = false
                 state.editState.selectedFilter = nil  // 필터 선택 해제
+                state.alert = AlertState {
+                    TextState("필터 적용 실패")
+                } actions: {
+                    ButtonState(role: .cancel, action: .confirmFilterError) {
+                        TextState("확인")
+                    }
+                } message: {
+                    TextState("필터를 적용하는데 실패했습니다.\n\(error)")
+                }
                 return .none
 
             case .completeButtonTapped:
@@ -297,14 +308,20 @@ struct EditVideoFeature {
             case .exportCompleted(let url):
                 state.isExporting = false
                 state.exportProgress = 1.0
-                print("✅ 영상 내보내기 완료: \(url)")
-                // 편집된 영상을 PostCreateFeature로 전달
                 return .send(.delegate(.videoExportCompleted(url)))
 
             case .exportFailed(let error):
                 state.isExporting = false
                 state.exportProgress = 0.0
-                print("❌ 영상 내보내기 실패: \(error)")
+                state.alert = AlertState {
+                    TextState("영상 내보내기 실패")
+                } actions: {
+                    ButtonState(role: .cancel, action: .confirmExportError) {
+                        TextState("확인")
+                    }
+                } message: {
+                    TextState(error)
+                }
                 return .none
 
             case .playbackEnded:

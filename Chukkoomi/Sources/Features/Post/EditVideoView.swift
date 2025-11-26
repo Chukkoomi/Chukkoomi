@@ -640,7 +640,7 @@ private struct SubtitleOverlayView: View {
             }), videoDisplaySize.width > 0 && videoDisplaySize.height > 0 {
 
                 // 실제 영상과 동일한 비율로 자막 크기 계산
-                // VideoCompositorWithSubtitles와 동일하게: width * 0.06
+                // VideoCompositor와 동일하게: width * 0.06
                 let fontSize = videoDisplaySize.width * 0.06
                 let outlineOffset: CGFloat = 2.0
 
