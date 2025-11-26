@@ -671,19 +671,15 @@ struct EditVideoFeature {
             // MARK: - Payment Actions
 
             case .loadPurchaseHistory:
-                print("🔄 [EditVideo] 구매 이력 로드 시작")
                 return .run { send in
                     // 사용 가능한 유료 필터 목록 가져오기
                     let availableFilters = await PurchaseManager.shared.getAvailableFilters()
-                    print("📋 [EditVideo] 사용 가능한 유료 필터: \(availableFilters.count)개")
-                    availableFilters.forEach { print("   - \($0.title) (postId: \($0.id))") }
 
                     // 구매한 필터의 postId 추출 (각각 isPurchased 호출)
                     var purchasedPostIds: Set<String> = []
                     for filter in availableFilters {
                         if await PurchaseManager.shared.isPurchased(filter.imageFilter) {
                             purchasedPostIds.insert(filter.id)
-                            print("✅ [EditVideo] 구매한 필터: \(filter.title)")
                         }
                     }
 
@@ -693,18 +689,13 @@ struct EditVideoFeature {
             case let .purchaseHistoryLoaded(availableFilters, purchasedPostIds):
                 state.availableFilters = availableFilters
                 state.purchasedFilterPostIds = purchasedPostIds
-                print("✅ 구매 이력 로드 완료: \(purchasedPostIds.count)/\(availableFilters.count)개")
                 return .none
 
             case let .webViewCreated(webView):
-                print("🌐 [EditVideo] WebView 생성됨")
                 state.webView = webView
 
                 // 결제 대기 중이면 실제 결제 시작
                 if state.isProcessingPayment, let paidFilter = state.pendingPurchaseFilter {
-                    print("   → 결제 시작!")
-                    print("   → 필터: \(paidFilter.title)")
-                    print("   → 가격: \(paidFilter.price)원")
 
                     // 결제 데이터 생성
                     let payment = PaymentService.shared.createPayment(
@@ -713,9 +704,6 @@ struct EditVideoFeature {
                         buyerName: "사용자",
                         postId: paidFilter.id
                     )
-
-                    print("   → 결제 데이터 생성 완료")
-                    print("   → Iamport SDK 호출 시작...")
 
                     return .run { send in
                         do {
@@ -741,37 +729,25 @@ struct EditVideoFeature {
                 // 적용된 필터가 유료 필터인지 확인
                 guard let appliedFilter = state.editState.selectedFilter else {
                     // 필터가 없으면 바로 완료
-                    print("   → 필터 없음, 바로 export")
                     return .send(.proceedToExport)
                 }
-
-                print("🔍 [EditVideo] 필터 구매 확인: \(appliedFilter.rawValue)")
 
                 // 유료 필터가 아니면 바로 완료
                 guard appliedFilter.isPaid else {
-                    print("   → 무료 필터, 바로 export")
                     return .send(.proceedToExport)
                 }
-
-                print("   → 유료 필터 감지!")
-                print("   → 사용 가능한 필터 목록: \(state.availableFilters.count)개")
-                print("   → 구매한 필터 타입: \(state.purchasedFilterTypes)")
 
                 // 이미 구매한 필터면 바로 완료
                 return .run { [purchasedFilterTypes = state.purchasedFilterTypes, availableFilters = state.availableFilters] send in
                     if purchasedFilterTypes.contains(appliedFilter) {
                         // 구매함 → 바로 완료
-                        print("   → 이미 구매한 필터, 바로 export")
                         await send(.proceedToExport)
                     } else {
                         // 미구매 → 구매 모달 표시
-                        print("   → 미구매 필터, 구매 모달 표시")
                         if let paidFilter = availableFilters.first(where: { $0.imageFilter == .animeGANHayao }) {
-                            print("   → 필터 정보 찾음: \(paidFilter.title)")
                             await send(.showPurchaseModal(paidFilter))
                         } else {
                             // 필터 정보를 찾을 수 없음 (서버 오류 또는 아직 로드되지 않음)
-                            print("❌ 유료 필터 정보를 찾을 수 없습니다: \(appliedFilter)")
                             await send(.proceedToExport)  // 일단 진행
                         }
                     }
@@ -781,7 +757,6 @@ struct EditVideoFeature {
                 state.pendingPurchaseFilter = paidFilter
                 state.isPurchaseModalPresented = true
                 state.paymentError = nil
-                print("🛒 구매 모달 표시: \(paidFilter.title)")
                 return .none
 
             case .dismissPurchaseModal:
@@ -791,16 +766,10 @@ struct EditVideoFeature {
                 return .none
 
             case .purchaseButtonTapped:
-                print("💳 [EditVideo] 구매 버튼 클릭")
 
                 guard let paidFilter = state.pendingPurchaseFilter else {
-                    print("❌ pendingPurchaseFilter가 없습니다")
                     return .none
                 }
-
-                print("   → 필터: \(paidFilter.title)")
-                print("   → 가격: \(paidFilter.price)원")
-                print("   → WebView 생성 대기 중...")
 
                 // Purchase modal 닫고 결제 모드 진입
                 // WebView가 생성되면 webViewCreated에서 실제 결제 시작
@@ -827,7 +796,6 @@ struct EditVideoFeature {
             case let .paymentCompleted(.failure(error)):
                 state.isProcessingPayment = false
                 state.paymentError = error.localizedDescription
-                print("❌ 결제 실패: \(error.localizedDescription)")
                 return .none
 
             case .proceedToExport:

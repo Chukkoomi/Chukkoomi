@@ -66,6 +66,7 @@ struct EditVideoView: View {
                                 trimEndTime: viewStore.editState.trimEndTime,
                                 subtitles: viewStore.editState.subtitles,
                                 backgroundMusics: viewStore.editState.backgroundMusics,
+                                isPlaying: viewStore.isPlaying,
                                 onTrimStartChanged: { time in
                                     viewStore.send(.updateTrimStartTime(time))
                                 },
@@ -851,6 +852,7 @@ private struct VideoTimelineEditor: UIViewRepresentable {
     let trimEndTime: Double
     let subtitles: [EditVideoFeature.Subtitle]
     let backgroundMusics: [EditVideoFeature.BackgroundMusic]
+    let isPlaying: Bool
     let onTrimStartChanged: (Double) -> Void
     let onTrimEndChanged: (Double) -> Void
     let onSeek: (Double) -> Void
@@ -1168,24 +1170,32 @@ private struct VideoTimelineEditor: UIViewRepresentable {
             playheadView.layer.zPosition = 1000
             playheadView.rulerHeight = rulerHeight
             playheadView.gapHeight = gapBetweenRulerAndTimeline
+            playheadView.duration = safeDuration
+            playheadView.timelineWidth = timelineWidth
+            playheadView.padding = timelinePadding
+            playheadView.onSeek = onSeek
             containerView.addSubview(playheadView)
             context.coordinator.playheadView = playheadView
             playheadView.setNeedsDisplay()
         }
-        
+
         if let playheadView = context.coordinator.playheadView {
             let oldHeight = playheadView.frame.size.height
             let newHeight = totalHeight
-            
+
             // 높이가 변경되면 다시 그리기
             if oldHeight != newHeight {
                 playheadView.frame.size.height = newHeight
                 playheadView.setNeedsDisplay()
             }
-            
+
             // 최신 ruler/gap 값 전달
             playheadView.rulerHeight = rulerHeight
             playheadView.gapHeight = gapBetweenRulerAndTimeline
+            playheadView.duration = safeDuration
+            playheadView.timelineWidth = timelineWidth
+            playheadView.padding = timelinePadding
+            playheadView.onSeek = onSeek
             
             // playhead를 항상 맨 앞으로
             containerView.bringSubviewToFront(playheadView)
@@ -1238,8 +1248,8 @@ private struct VideoTimelineEditor: UIViewRepresentable {
             }
         }
         
-        // 스크롤 자동 조정 (playhead가 화면 중앙에 오도록)
-        if !context.coordinator.isUserScrolling {
+        // 스크롤 자동 조정 (재생 중일 때만 playhead가 화면 중앙에 오도록)
+        if isPlaying {
             let targetOffsetX = playheadPosition - screenWidth / 2
             let maxOffsetX = max(0, timelineWidth - screenWidth)
             let clampedOffsetX = max(0, min(targetOffsetX, maxOffsetX))
@@ -1285,7 +1295,6 @@ private struct VideoTimelineEditor: UIViewRepresentable {
         var timelineHostingController: UIHostingController<AnyView>?
         var rulerView: TimeRulerView?
         var timeLabel: UILabel?
-        var isUserScrolling = false
         var isSeeking = false  // seek 중인지 추적
         var subtitleBlocks: [UUID: SubtitleBlockUIView] = [:]  // 자막 블록 캐시
         var backgroundMusicBlocks: [BackgroundMusicBlockUIView] = []  // 배경음악 블록들
@@ -1293,20 +1302,6 @@ private struct VideoTimelineEditor: UIViewRepresentable {
         weak var scrollView: UIScrollView?  // ScrollView 참조
         var timelineOriginY: CGFloat = 0  // 타임라인 Y 위치
         var timelineHeight: CGFloat = 0  // 타임라인 높이
-        
-        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-            isUserScrolling = true
-        }
-        
-        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-            if !decelerate {
-                isUserScrolling = false
-            }
-        }
-        
-        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
-            isUserScrolling = false
-        }
 
         func updateLoadingIndicator(isLoading: Bool) {
             guard let scrollView = scrollView else { return }
@@ -1348,23 +1343,38 @@ private class TimeRulerView: UIView {
     var padding: CGFloat = 20
     var onSeek: ((Double) -> Void)?
     private let timeFont = UIFont.systemFont(ofSize: 14, weight: .regular)
-    
+
     override init(frame: CGRect) {
         super.init(frame: frame)
-        setupTapGesture()
+        setupGesture()
     }
-    
+
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        setupTapGesture()
+        setupGesture()
     }
-    
-    private func setupTapGesture() {
+
+    private func setupGesture() {
+        // Pan gesture로 변경하여 드래그 중에도 seek 가능
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        addGestureRecognizer(panGesture)
+
+        // Tap gesture도 유지 (빠른 터치용)
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
         addGestureRecognizer(tapGesture)
+
         isUserInteractionEnabled = true
     }
-    
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        let location = gesture.location(in: self)
+        // 패딩을 고려한 시간 계산
+        let adjustedX = location.x - padding
+        let tappedTime = Double(adjustedX) / Double(pixelsPerSecond)
+        let clampedTime = min(max(tappedTime, 0), duration)
+        onSeek?(clampedTime)
+    }
+
     @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
         let location = gesture.location(in: self)
         // 패딩을 고려한 시간 계산
@@ -1425,17 +1435,40 @@ private class PlayheadUIView: UIView {
     // 눈금자 높이와 그 아래 gap 높이 (삼각형은 gap에, 선은 그 아래에서 시작)
     var rulerHeight: CGFloat = 20
     var gapHeight: CGFloat = 16
-    
+    var duration: Double = 0
+    var timelineWidth: CGFloat = 0
+    var padding: CGFloat = 0
+    var onSeek: ((Double) -> Void)?
+
     override init(frame: CGRect) {
         super.init(frame: frame)
-        self.isUserInteractionEnabled = false
+        self.isUserInteractionEnabled = true
         self.isOpaque = false
         self.backgroundColor = .clear
         self.contentMode = .redraw
+        setupGesture()
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupGesture() {
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        addGestureRecognizer(panGesture)
+    }
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        guard let superview = superview, duration > 0, timelineWidth > 0 else { return }
+
+        let location = gesture.location(in: superview)
+
+        // padding을 고려한 시간 계산
+        let adjustedX = location.x - padding
+        let tappedTime = Double(adjustedX) / Double((timelineWidth - padding * 2) / CGFloat(duration))
+        let clampedTime = min(max(tappedTime, 0), duration)
+
+        onSeek?(clampedTime)
     }
     
     override func draw(_ rect: CGRect) {
