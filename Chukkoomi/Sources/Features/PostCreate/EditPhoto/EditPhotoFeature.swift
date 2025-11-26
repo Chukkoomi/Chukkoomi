@@ -901,7 +901,7 @@ struct EditPhotoFeature {
 
             case .purchaseButtonTapped:
 
-                guard let paidFilter = state.pendingPurchaseFilter else {
+                guard state.pendingPurchaseFilter != nil else {
                     return .none
                 }
 

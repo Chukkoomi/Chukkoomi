@@ -380,7 +380,7 @@ struct PostCellFeature {
                 guard let postId = state.postId else { return .none }
                 return .send(.delegate(.postDeleted(postId)))
 
-            case let .deleteResponse(.failure(error)):
+            case .deleteResponse(.failure(_)):
                 return .none
 
             case .delegate:
