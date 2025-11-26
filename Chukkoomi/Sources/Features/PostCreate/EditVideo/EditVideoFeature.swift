@@ -205,6 +205,14 @@ struct EditVideoFeature {
                 return .send(.loadPurchaseHistory)
 
             case .playPauseButtonTapped:
+                // 재생을 시작할 때 (현재 일시정지 상태)
+                if !state.isPlaying {
+                    // playhead가 영상 끝에 있으면 처음으로 돌아가기
+                    let endTime = state.editState.trimEndTime
+                    if state.currentTime >= endTime - 0.1 { // 끝에서 0.1초 이내
+                        state.seekTarget = state.editState.trimStartTime
+                    }
+                }
                 state.isPlaying.toggle()
                 return .none
 

@@ -1400,8 +1400,8 @@ private class TimeRulerView: UIView {
             .paragraphStyle: paragraphStyle
         ]
 
-        // 1초 간격으로 눈금 그리기
-        let totalSeconds = Int(ceil(duration))
+        // 1초 간격으로 눈금 그리기 (실제 duration 이하의 시간만 표기)
+        let totalSeconds = Int(duration)
         for second in 0...totalSeconds {
             // 패딩을 고려한 x 위치
             let xPosition = padding + CGFloat(second) * pixelsPerSecond
