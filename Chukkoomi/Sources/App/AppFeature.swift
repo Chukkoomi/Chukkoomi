@@ -58,6 +58,17 @@ struct AppFeature {
                     // 로그인 상태 - MainTabView 표시
                     state.mainTabState = MainTabFeature.State()
                     state.loginState = nil
+
+                    // 구매 이력 동기화
+                    return .run { _ in
+                        do {
+                            try await PurchaseManager.shared.syncPurchaseHistory()
+                            print("✅ 앱 실행 시 구매 이력 동기화 완료")
+                        } catch {
+                            print("❌ 구매 이력 동기화 실패: \(error)")
+                            // 동기화 실패해도 앱 실행은 계속
+                        }
+                    }
                 } else {
                     // 비로그인 상태 - LoginView 표시
                     state.loginState = LoginFeature.State()
