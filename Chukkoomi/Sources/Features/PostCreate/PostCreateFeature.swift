@@ -200,10 +200,18 @@ struct PostCreateFeature {
 
             case .removeImage:
                 // 선택된 이미지/영상 제거
+                let videoURLToDelete = state.selectedVideoURL
                 state.selectedImageData = nil
                 state.selectedVideoURL = nil
                 state.videoThumbnailData = nil
                 state.currentImage = nil
+
+                // 영상 파일이 있으면 삭제
+                if let videoURL = videoURLToDelete {
+                    return .run { _ in
+                        try? FileManager.default.removeItem(at: videoURL)
+                    }
+                }
                 return .none
 
             case let .imageLoaded(image):
@@ -425,6 +433,9 @@ struct PostCreateFeature {
                 let logMessage = state.isEditMode ? "게시글 수정 성공: \(response.postId)" : "게시글 업로드 성공: \(response.postId)"
                 print(logMessage)
 
+                // 영상 파일 삭제
+                let videoURLToDelete = state.selectedVideoURL
+
                 // 작성 모드일 때만 상태 초기화
                 if !state.isEditMode {
                     state.selectedImageData = nil
@@ -432,10 +443,21 @@ struct PostCreateFeature {
                     state.videoThumbnailData = nil
                     state.selectedCategory = .all
                     state.content = ""
+                } else {
+                    // 수정 모드에서도 영상은 삭제
+                    state.selectedVideoURL = nil
+                    state.videoThumbnailData = nil
                 }
 
                 // 성공 알림 표시
                 state.showSuccessAlert = true
+
+                // 영상 파일이 있으면 삭제
+                if let videoURL = videoURLToDelete {
+                    return .run { _ in
+                        try? FileManager.default.removeItem(at: videoURL)
+                    }
+                }
                 return .none
 
             case .dismissSuccessAlert:
