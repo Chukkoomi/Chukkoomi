@@ -670,7 +670,7 @@ private struct SubtitleOverlayView: View {
                 // 실제 영상과 동일한 비율로 자막 크기 계산
                 // VideoCompositor와 동일하게: width * 0.06
                 let fontSize = videoDisplaySize.width * 0.06
-                let outlineOffset: CGFloat = 2.0
+                let outlineOffset: CGFloat = 1.5
 
                 // 컨테이너 내에서 비디오가 표시되는 영역 계산 (중앙 정렬)
                 let containerSize = geometry.size
@@ -682,7 +682,7 @@ private struct SubtitleOverlayView: View {
                     ForEach(0..<8) { i in
                         Text(currentSubtitle.text)
                             .font(.system(size: fontSize, weight: .bold))
-                            .foregroundStyle(.black)
+                            .foregroundStyle(.black.opacity(0.6))
                             .offset(
                                 x: CGFloat(i % 3 - 1) * outlineOffset,
                                 y: CGFloat(i / 3 - 1) * outlineOffset
