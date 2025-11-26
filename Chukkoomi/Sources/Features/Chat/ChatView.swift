@@ -223,6 +223,7 @@ struct ChatView: View {
                 )
                 .presentationDetents([.medium])
             }
+            .alert(store: store.scope(state: \.$alert, action: \.alert))
             .onDisappear {
                 viewStore.send(.onDisappear)
             }

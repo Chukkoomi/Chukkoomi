@@ -18,6 +18,7 @@ struct ChatListFeature: Reducer {
         var myUserId: String?
         @PresentationState var chat: ChatFeature.State?
         @PresentationState var userSearch: UserSearchFeature.State?
+        @PresentationState var alert: AlertState<Action.Alert>?
     }
 
     // MARK: - Action
@@ -26,6 +27,7 @@ struct ChatListFeature: Reducer {
         case onAppear
         case loadMyProfile
         case myProfileLoaded(String)
+        case profileLoadFailed(String)
         case loadChatRooms
         case chatRoomsLoaded([ChatRoom])
         case chatRoomsLoadedFromRealm([ChatRoom])
@@ -34,6 +36,12 @@ struct ChatListFeature: Reducer {
         case userSearchButtonTapped
         case chat(PresentationAction<ChatFeature.Action>)
         case userSearch(PresentationAction<UserSearchFeature.Action>)
+        case alert(PresentationAction<Alert>)
+
+        @CasePathable
+        enum Alert: Equatable {
+            case confirmProfileLoadError
+        }
     }
 
     // MARK: - Body
@@ -89,9 +97,22 @@ struct ChatListFeature: Reducer {
                         ).toDomain
                         await send(.myProfileLoaded(profile.userId))
                     } catch {
-                        // TODO: 에러 처리
+                        await send(.profileLoadFailed(error.localizedDescription))
                     }
                 }
+
+            case .profileLoadFailed(let errorMessage):
+                state.isLoading = false
+                state.alert = AlertState {
+                    TextState("프로필 로드 실패")
+                } actions: {
+                    ButtonState(role: .cancel, action: .confirmProfileLoadError) {
+                        TextState("확인")
+                    }
+                } message: {
+                    TextState(errorMessage)
+                }
+                return .none
 
             case .myProfileLoaded(let userId):
                 state.myUserId = userId
@@ -208,6 +229,9 @@ struct ChatListFeature: Reducer {
                 return .none
 
             case .userSearch:
+                return .none
+
+            case .alert:
                 return .none
             }
         }

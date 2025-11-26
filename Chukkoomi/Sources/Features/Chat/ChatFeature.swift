@@ -32,6 +32,7 @@ struct ChatFeature: Reducer {
         var selectedTheme: ChatTheme = .default
         var isThemeSheetPresented: Bool = false
         var isWebSocketConnected: Bool = false
+        @PresentationState var alert: AlertState<Action.Alert>?
 
         init(chatRoom: ChatRoom?, opponent: ChatUser, myUserId: String?) {
             self.chatRoom = chatRoom
@@ -64,6 +65,7 @@ struct ChatFeature: Reducer {
     }
 
     // MARK: - Action
+    @CasePathable
     enum Action: Equatable {
         case onAppear
         case onDisappear
@@ -99,6 +101,15 @@ struct ChatFeature: Reducer {
         case webSocketDisconnected
         case webSocketMessageReceived([ChatMessage])
         case webSocketError(String)
+
+        // Alert
+        case alert(PresentationAction<Alert>)
+
+        @CasePathable
+        enum Alert: Equatable {
+            case confirmMessageLoadError
+            case confirmWebSocketError
+        }
     }
 
     // MARK: - Reducer
@@ -331,9 +342,17 @@ struct ChatFeature: Reducer {
             state.isLoading = true
             return .send(.loadMessages)
 
-        case .messageLoadFailed:
+        case .messageLoadFailed(let errorMessage):
             state.isLoading = false
-            // TODO: 에러 알림 표시
+            state.alert = AlertState {
+                TextState("메시지 로드 실패")
+            } actions: {
+                ButtonState(role: .cancel, action: .confirmMessageLoadError) {
+                    TextState("확인")
+                }
+            } message: {
+                TextState(errorMessage)
+            }
             return .none
 
         case .messageSendFailed(_, let localId):
@@ -673,8 +692,19 @@ struct ChatFeature: Reducer {
             }
             return .none
 
-        case .webSocketError:
-            // TODO: 사용자에게 에러 표시 (필요시)
+        case .webSocketError(let errorMessage):
+            state.alert = AlertState {
+                TextState("연결 오류")
+            } actions: {
+                ButtonState(role: .cancel, action: .confirmWebSocketError) {
+                    TextState("확인")
+                }
+            } message: {
+                TextState(errorMessage)
+            }
+            return .none
+
+        case .alert:
             return .none
         }
     }
