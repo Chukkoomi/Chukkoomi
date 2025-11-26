@@ -157,17 +157,6 @@ struct ChatRoomRow: View {
                         .font(.system(size: 12))
                         .foregroundColor(.gray)
                 }
-
-                // TODO: 안읽은 메시지 개수 표시
-//                if unreadCount > 0 {
-//                    Text("\(unreadCount)")
-//                        .font(.system(size: 11, weight: .semibold))
-//                        .foregroundColor(.white)
-//                        .padding(.horizontal, 6)
-//                        .padding(.vertical, 2)
-//                        .background(Color.red)
-//                        .clipShape(Capsule())
-//                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
