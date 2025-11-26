@@ -28,6 +28,9 @@ struct MatchInfoView: View {
         .ignoresSafeArea(edges: .top)
         .navigationTitle("경기 정보")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarBackground(Color.clear, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .onAppear {
             store.send(.onAppear)
         }
@@ -352,7 +355,6 @@ private struct FieldPlayerRowView: View {
             }
         }
         .padding(.horizontal, AppPadding.large)
-        .tint(.white)
     }
 }
 
