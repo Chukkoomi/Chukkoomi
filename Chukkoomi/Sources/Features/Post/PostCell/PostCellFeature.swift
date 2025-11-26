@@ -7,6 +7,7 @@
 
 import ComposableArchitecture
 import Foundation
+import UIKit
 
 @Reducer
 struct PostCellFeature {
@@ -21,9 +22,11 @@ struct PostCellFeature {
         var isFollowing: Bool
         var likedUsers: [User] = [] // 좋아요 누른 사용자들 (최대 3명)
         var isLoadingLikedUsers: Bool = false
+        var currentImage: UIImage? = nil // 로드된 이미지 저장
 
         @Presents var menu: ConfirmationDialogState<Action.Menu>?
         @Presents var deleteAlert: AlertState<Action.DeleteAlert>?
+        @Presents var imageViewer: ImageViewerFeature.State?
 
         var id: String {
             post.id
@@ -88,6 +91,8 @@ struct PostCellFeature {
         case followTapped
         case menuTapped
         case hashtagTapped(String)
+        case imageTapped
+        case imageLoaded(UIImage)
 
         // Comment Count Update
         case updateCommentCount(Int) // delta: +1 or -1
@@ -109,6 +114,9 @@ struct PostCellFeature {
         // Debounced Network Actions
         case debouncedToggleRequest(ToggleType)
         case toggleResponse(ToggleType, Result<PostLikeResponseDTO, Error>)
+
+        // Image Viewer
+        case imageViewer(PresentationAction<ImageViewerFeature.Action>)
 
         // Delegate Actions (부모에게 알림)
         case delegate(Delegate)
@@ -145,8 +153,11 @@ struct PostCellFeature {
                  (.bookmarkTapped, .bookmarkTapped),
                  (.followTapped, .followTapped),
                  (.menuTapped, .menuTapped),
+                 (.imageTapped, .imageTapped),
                  (.loadLikedUsers, .loadLikedUsers):
                 return true
+            case (.imageLoaded, .imageLoaded):
+                return true  // UIImage는 비교 불가
             case let (.hashtagTapped(lhs), .hashtagTapped(rhs)):
                 return lhs == rhs
             case let (.updateCommentCount(lhs), .updateCommentCount(rhs)):
@@ -165,6 +176,8 @@ struct PostCellFeature {
                 return lhs == rhs
             case let (.toggleResponse(lhsType, _), .toggleResponse(rhsType, _)):
                 return lhsType == rhsType
+            case let (.imageViewer(lhs), .imageViewer(rhs)):
+                return lhs == rhs
             case let (.delegate(lhs), .delegate(rhs)):
                 return lhs == rhs
             default:
@@ -226,6 +239,22 @@ struct PostCellFeature {
             case .commentTapped:
                 guard let postId = state.postId else { return .none }
                 return .send(.delegate(.commentPost(postId)))
+
+            case let .imageLoaded(image):
+                state.currentImage = image
+                return .none
+
+            case .imageTapped:
+                guard let image = state.currentImage else { return .none }
+                state.imageViewer = ImageViewerFeature.State(image: image)
+                return .none
+
+            case .imageViewer(.presented(.delegate(.dismiss))):
+                state.imageViewer = nil
+                return .none
+
+            case .imageViewer:
+                return .none
 
             case let .updateCommentCount(delta):
                 state.commentCount += delta
@@ -396,6 +425,9 @@ struct PostCellFeature {
         }
         .ifLet(\.$menu, action: \.menu)
         .ifLet(\.$deleteAlert, action: \.deleteAlert)
+        .ifLet(\.$imageViewer, action: \.imageViewer) {
+            ImageViewerFeature()
+        }
     }
 
     // MARK: - Private Helper Methods

@@ -46,6 +46,12 @@ struct PostCellView: View {
         .alert(
             store: store.scope(state: \.$deleteAlert, action: \.deleteAlert)
         )
+        .fullScreenCover(
+            store: store.scope(state: \.$imageViewer, action: \.imageViewer)
+        ) { store in
+            ImageViewerView(store: store)
+                .presentationBackground(.clear)
+        }
         .onAppear {
             store.send(.loadLikedUsers)
         }
@@ -153,12 +159,19 @@ struct PostCellView: View {
                         imagePath: firstFile,
                         width: availableWidth,
                         height: imageHeight,
-                        onImageLoaded: { _ in }
+                        onImageLoaded: { data in
+                            if let uiImage = UIImage(data: data) {
+                                store.send(.imageLoaded(uiImage))
+                            }
+                        }
                     )
                     .aspectRatio(16/9, contentMode: .fit)
                     .clipped()
                     .cornerRadius(12)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onTapGesture {
+                        store.send(.imageTapped)
+                    }
                 }
             }
             .aspectRatio(16/9, contentMode: .fit)

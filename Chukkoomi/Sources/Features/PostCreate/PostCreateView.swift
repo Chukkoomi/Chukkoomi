@@ -52,6 +52,12 @@ struct PostCreateView: View {
                     GalleryPickerView(store: store)
                 }
             }
+            .fullScreenCover(
+                store: store.scope(state: \.$imageViewer, action: \.imageViewer)
+            ) { store in
+                ImageViewerView(store: store)
+                    .presentationBackground(.clear)
+            }
             .alert(alertTitle, isPresented: Binding(
                 get: { store.showSuccessAlert },
                 set: { _ in store.send(.dismissSuccessAlert) }
@@ -120,6 +126,12 @@ struct PostCreateView: View {
                             .scaledToFill()
                             .frame(width: geometry.size.width, height: geometry.size.width / 16 * 9)
                             .clipped()
+                            .onTapGesture {
+                                store.send(.imageTapped)
+                            }
+                            .onAppear {
+                                store.send(.imageLoaded(uiImage))
+                            }
                     }
                     .frame(maxWidth: .infinity)
                     .aspectRatio(16/9, contentMode: .fill)
@@ -145,8 +157,15 @@ struct PostCreateView: View {
                             imagePath: originalImageUrl,
                             width: geometry.size.width,
                             height: geometry.size.width / 16 * 9,
-                            onImageLoaded: { _ in }
+                            onImageLoaded: { data in
+                                if let uiImage = UIImage(data: data) {
+                                    store.send(.imageLoaded(uiImage))
+                                }
+                            }
                         )
+                        .onTapGesture {
+                            store.send(.imageTapped)
+                        }
                     }
                     .frame(maxWidth: .infinity)
                     .aspectRatio(16/9, contentMode: .fill)
