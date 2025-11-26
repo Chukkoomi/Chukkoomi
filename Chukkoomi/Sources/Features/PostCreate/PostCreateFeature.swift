@@ -32,8 +32,12 @@ struct PostCreateFeature {
         var originalContent: String?
         var originalImageUrl: String?
 
+        // 이미지 뷰어
+        var currentImage: UIImage? = nil
+
         // 갤러리 피커
         @Presents var galleryPicker: GalleryPickerFeature.State?
+        @Presents var imageViewer: ImageViewerFeature.State?
 
         // 네비게이션 타이틀
         var navigationTitle: String {
@@ -125,9 +129,14 @@ struct PostCreateFeature {
         case uploadResponse(Result<PostResponseDTO, Error>)
         case dismissSuccessAlert
         case videoThumbnailGenerated(Data)
+        case imageLoaded(UIImage)
+        case imageTapped
 
         // 갤러리 피커
         case galleryPicker(PresentationAction<GalleryPickerFeature.Action>)
+
+        // 이미지 뷰어
+        case imageViewer(PresentationAction<ImageViewerFeature.Action>)
 
         // Delegate
         case delegate(Delegate)
@@ -146,6 +155,10 @@ struct PostCreateFeature {
                 return lhsContent == rhsContent
             case (.selectImageTapped, .selectImageTapped):
                 return true
+            case (.imageLoaded, .imageLoaded):
+                return true  // UIImage는 비교 불가
+            case (.imageTapped, .imageTapped):
+                return true
             case (.removeImage, .removeImage):
                 return true
             case (.uploadButtonTapped, .uploadButtonTapped):
@@ -158,6 +171,10 @@ struct PostCreateFeature {
                 return true
             case (.galleryPicker, .galleryPicker):
                 return true
+            case let (.galleryPicker(lhs), .galleryPicker(rhs)):
+                return lhs == rhs
+            case let (.imageViewer(lhs), .imageViewer(rhs)):
+                return lhs == rhs
             case let (.delegate(lhs), .delegate(rhs)):
                 return lhs == rhs
             default:
@@ -188,6 +205,23 @@ struct PostCreateFeature {
                 state.selectedImageData = nil
                 state.selectedVideoURL = nil
                 state.videoThumbnailData = nil
+                state.currentImage = nil
+                return .none
+
+            case let .imageLoaded(image):
+                state.currentImage = image
+                return .none
+
+            case .imageTapped:
+                guard let image = state.currentImage else { return .none }
+                state.imageViewer = ImageViewerFeature.State(image: image)
+                return .none
+
+            case .imageViewer(.presented(.delegate(.dismiss))):
+                state.imageViewer = nil
+                return .none
+
+            case .imageViewer:
                 return .none
 
             case .uploadButtonTapped:
@@ -473,6 +507,9 @@ struct PostCreateFeature {
         }
         .ifLet(\.$galleryPicker, action: \.galleryPicker) {
             GalleryPickerFeature()
+        }
+        .ifLet(\.$imageViewer, action: \.imageViewer) {
+            ImageViewerFeature()
         }
     }
 }
