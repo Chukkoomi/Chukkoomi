@@ -49,3 +49,15 @@ extension ImageFilter {
         }
     }
 }
+
+extension VideoFilter {
+    /// 유료 필터 여부
+    var isPaid: Bool {
+        switch self {
+        case .animeGANHayao:
+            return true
+        default:
+            return false
+        }
+    }
+}

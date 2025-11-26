@@ -102,6 +102,7 @@ struct EditVideoView: View {
                             // 필터 선택
                             FilterSelectionView(
                                 selectedFilter: viewStore.editState.selectedFilter,
+                                purchasedFilterTypes: viewStore.purchasedFilterTypes,
                                 onFilterSelected: { filter in
                                     viewStore.send(.filterSelected(filter))
                                 }
@@ -163,6 +164,33 @@ struct EditVideoView: View {
                 }
             }
             .alert(store: store.scope(state: \.$alert, action: \.alert))
+            .onAppear {
+                viewStore.send(.onAppear)
+            }
+            .overlay {
+                if viewStore.isPurchaseModalPresented {
+                    PurchaseModalView(viewStore: viewStore)
+                }
+            }
+            .overlay {
+                // 구매하기 버튼 누르면 그때만 WebView 표시
+                if viewStore.isProcessingPayment {
+                    ZStack {
+                        Color.black.opacity(0.9)
+                            .ignoresSafeArea()
+
+                        IamportWebView(webView: Binding(
+                            get: { viewStore.webView },
+                            set: { webView in
+                                if let webView {
+                                    viewStore.send(.webViewCreated(webView))
+                                }
+                            }
+                        ))
+                        .background(Color.white)
+                    }
+                }
+            }
         }
     }
 }
@@ -1744,13 +1772,13 @@ private class SubtitleBlockUIView: UIView {
     }
     
     private func setupViews() {
-        backgroundColor = UIColor.systemRed.withAlphaComponent(0.6)
+        backgroundColor = UIColor.systemBlue.withAlphaComponent(0.6)
         layer.cornerRadius = 4
         clipsToBounds = true
 
         // 왼쪽 핸들
         leftHandle = UIView()
-        leftHandle.backgroundColor = UIColor.systemRed
+        leftHandle.backgroundColor = UIColor.systemBlue
         leftHandle.layer.cornerRadius = 4
         addSubview(leftHandle)
 
@@ -1773,7 +1801,7 @@ private class SubtitleBlockUIView: UIView {
 
         // 오른쪽 핸들
         rightHandle = UIView()
-        rightHandle.backgroundColor = UIColor.systemRed
+        rightHandle.backgroundColor = UIColor.systemBlue
         rightHandle.layer.cornerRadius = 4
         addSubview(rightHandle)
 
@@ -1962,13 +1990,13 @@ private class BackgroundMusicBlockUIView: UIView {
     }
 
     private func setupViews() {
-        backgroundColor = UIColor.systemGreen.withAlphaComponent(0.6)
+        backgroundColor = UIColor.systemBlue.withAlphaComponent(0.6)
         layer.cornerRadius = 4
         clipsToBounds = true
 
         // 왼쪽 핸들
         leftHandle = UIView()
-        leftHandle.backgroundColor = UIColor.systemGreen
+        leftHandle.backgroundColor = UIColor.systemBlue
         leftHandle.layer.cornerRadius = 4
         addSubview(leftHandle)
 
@@ -1991,7 +2019,7 @@ private class BackgroundMusicBlockUIView: UIView {
 
         // 오른쪽 핸들
         rightHandle = UIView()
-        rightHandle.backgroundColor = UIColor.systemGreen
+        rightHandle.backgroundColor = UIColor.systemBlue
         rightHandle.layer.cornerRadius = 4
         addSubview(rightHandle)
 
@@ -2240,6 +2268,7 @@ private class BackgroundMusicBlockUIView: UIView {
 // MARK: - Filter Selection View
 private struct FilterSelectionView: View {
     let selectedFilter: VideoFilter?
+    let purchasedFilterTypes: Set<VideoFilter>  // 구매한 필터 타입
     let onFilterSelected: (VideoFilter) -> Void
 
     var body: some View {
@@ -2249,6 +2278,7 @@ private struct FilterSelectionView: View {
                     FilterButton(
                         filter: filter,
                         isSelected: selectedFilter == filter,
+                        isPurchased: isPurchased(filter),
                         action: {
                             onFilterSelected(filter)
                         }
@@ -2258,32 +2288,61 @@ private struct FilterSelectionView: View {
             .padding(.horizontal, 16)
         }
     }
+
+    // 필터 구매 여부 확인
+    private func isPurchased(_ filter: VideoFilter) -> Bool {
+        // 유료 필터가 아니면 항상 true
+        guard filter.isPaid else { return true }
+
+        // 캐시된 purchasedFilterTypes에서 확인 (동기적으로)
+        return purchasedFilterTypes.contains(filter)
+    }
 }
 
 // MARK: - Filter Button
 private struct FilterButton: View {
     let filter: VideoFilter
     let isSelected: Bool
+    let isPurchased: Bool  // 구매 여부
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             VStack(spacing: 8) {
                 // 필터 미리보기
-                Image(image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 80, height: 80)
-                    .customRadius()
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(isSelected ? Color(uiColor: UIColor.systemIndigo) : Color.clear, lineWidth: 4)
-                    )
+                ZStack {
+                    Image(image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 80, height: 80)
+                        .customRadius()
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(isSelected ? Color(uiColor: UIColor.systemBlue) : Color.clear, lineWidth: 4)
+                        )
+
+                    // Lock/Unlock 아이콘 (유료 필터인 경우)
+                    if filter.isPaid {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Image(systemName: isPurchased ? "lock.open.fill" : "lock.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.white)
+                                    .padding(4)
+                                    .background(isPurchased ? Color.green.opacity(0.8) : Color.red.opacity(0.8))
+                                    .clipShape(Circle())
+                                    .padding(6)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
 
                 // 필터 이름
                 Text(filter.displayName)
                     .font(.appCaption)
-                    .foregroundStyle(isSelected ? Color(uiColor: UIColor.systemIndigo) : .black)
+                    .foregroundStyle(isSelected ? Color(uiColor: UIColor.systemBlue) : .black)
             }
         }
     }
@@ -2522,6 +2581,98 @@ private struct SubtitleInputOverlayView: View {
             .onAppear {
                 isFocused = true
             }
+        }
+    }
+}
+
+// MARK: - Purchase Modal View
+private struct PurchaseModalView: View {
+    let viewStore: ViewStoreOf<EditVideoFeature>
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    viewStore.send(.dismissPurchaseModal)
+                }
+
+            VStack(spacing: 20) {
+                // 헤더
+                HStack {
+                    Text("유료 필터 구매")
+                        .font(.title2)
+                        .fontWeight(.bold)
+
+                    Spacer()
+
+                    Button {
+                        viewStore.send(.dismissPurchaseModal)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundColor(.gray)
+                    }
+                }
+
+                Divider()
+
+                if let paidFilter = viewStore.pendingPurchaseFilter {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(paidFilter.title)
+                            .font(.headline)
+
+                        Text(paidFilter.content)
+                            .font(.body)
+                            .foregroundColor(.secondary)
+
+                        HStack {
+                            Text("가격:")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("\(paidFilter.price)원")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                        }
+                    }
+                }
+
+                // 에러 메시지
+                if let errorMessage = viewStore.paymentError {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .padding()
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(8)
+                }
+
+                // 구매 버튼
+                Button {
+                    viewStore.send(.purchaseButtonTapped)
+                } label: {
+                    if viewStore.isProcessingPayment {
+                        ProgressView()
+                            .tint(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                    } else {
+                        Text("구매하기")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                    }
+                }
+                .background(viewStore.isProcessingPayment ? Color.gray : Color.blue)
+                .foregroundColor(.white)
+                .cornerRadius(12)
+                .disabled(viewStore.isProcessingPayment)
+            }
+            .padding(24)
+            .background(Color.white)
+            .cornerRadius(20)
+            .shadow(radius: 20)
+            .frame(maxWidth: 350)
         }
     }
 }
