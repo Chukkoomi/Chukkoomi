@@ -65,7 +65,6 @@ extension String {
         }
 
         let fullURL = APIInfo.baseURL + pathWithVersion
-        print("📸 미디어 URL 생성: \(fullURL)")
         return fullURL
     }
 }

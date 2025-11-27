@@ -1,17 +1,193 @@
 //
-//  VideoFilterHelper.swift
+//  VideoFilterManager.swift
 //  Chukkoomi
 //
-//  Created by 김영훈 on 11/20/25.
+//  Created by 김영훈 on 11/15/25.
 //
 
-import Foundation
+import UIKit
+import AVFoundation
 @preconcurrency import CoreImage
+import Vision
 import CoreML
 import Metal
 
-/// 비디오 필터 적용 헬퍼 (공통 로직)
-enum VideoFilterHelper {
+/// 비디오 필터 타입
+enum VideoFilter: String, CaseIterable, Equatable {
+    case blackAndWhite = "흑백"
+    case warm = "따뜻한"
+    case cool = "차가운"
+    case animeGANHayao = "애니메이션"
+
+    var displayName: String {
+        return rawValue
+    }
+}
+
+/// 비디오 필터 에러
+enum VideoFilterError: Error, LocalizedError {
+    case filterCreationFailed(String)
+    case invalidImageExtent
+    case modelNotAvailable
+    case inputNameNotFound
+    case pixelBufferCreationFailed
+    case outputDataNotFound
+    case mlProcessingFailed(Error)
+
+    var errorDescription: String? {
+        switch self {
+        case .filterCreationFailed(let filterName):
+            return "필터 생성 실패: \(filterName)"
+        case .invalidImageExtent:
+            return "유효하지 않은 이미지 크기"
+        case .modelNotAvailable:
+            return "AI 모델을 사용할 수 없습니다"
+        case .inputNameNotFound:
+            return "모델 입력 이름을 찾을 수 없습니다"
+        case .pixelBufferCreationFailed:
+            return "이미지 버퍼 생성 실패"
+        case .outputDataNotFound:
+            return "모델 출력 데이터를 가져올 수 없습니다"
+        case .mlProcessingFailed(let error):
+            return "AI 처리 실패: \(error.localizedDescription)"
+        }
+    }
+}
+
+/// 비디오 필터 관리자
+struct VideoFilterManager {
+    
+    /// 비디오에 필터를 적용한 AVVideoComposition 생성
+    /// - Parameters:
+    ///   - asset: 원본 비디오 AVAsset
+    ///   - filter: 적용할 필터
+    ///   - targetSize: 목표 크기 (nil이면 원본 크기 사용)
+    /// - Returns: 필터가 적용된 AVVideoComposition (필터가 없으면 nil)
+    static func createVideoComposition(
+        for asset: AVAsset,
+        filter: VideoFilter?,
+        targetSize: CGSize? = nil,
+        isPortraitFromPHAsset: Bool
+    ) async -> AVVideoComposition? {
+        // 필터가 없으면 nil 반환
+        guard let filter = filter else {
+            return nil
+        }
+        
+        // 비디오 트랙 가져오기
+        guard let videoTrack = try? await asset.loadTracks(withMediaType: .video).first else {
+            return nil
+        }
+        
+        let naturalSize = try? await videoTrack.load(.naturalSize)
+        
+        guard let naturalSize else {
+            return nil
+        }
+        
+        // naturalSize가 가로 방향인지 확인
+        let isNaturalSizePortrait = naturalSize.width < naturalSize.height
+        
+        // 세로 영상인데 naturalSize가 가로로 나온 경우 swap
+        let adjustedNaturalSize: CGSize
+        if isPortraitFromPHAsset && !isNaturalSizePortrait {
+            adjustedNaturalSize = CGSize(width: naturalSize.height, height: naturalSize.width)
+        } else {
+            adjustedNaturalSize = naturalSize
+        }
+        
+        // renderSize 계산
+        let renderSize = targetSize ?? adjustedNaturalSize
+        
+        // AVVideoComposition 생성 (필터 + 리사이즈를 CIImage로 처리)
+        let composition = AVMutableVideoComposition(
+            asset: asset,
+            applyingCIFiltersWithHandler: { request in
+                var outputImage = request.sourceImage
+
+                // 실제 extent 기준으로 방향 확인 (CIImage는 이미 회전된 extent를 가짐)
+                let sourceExtent = outputImage.extent
+                let isSourcePortrait = sourceExtent.width < sourceExtent.height
+                let isRenderPortrait = renderSize.width < renderSize.height
+                let actualNeedsRotation = isSourcePortrait != isRenderPortrait
+
+                // 1. 필터 적용
+                outputImage = applyFilter(filter, to: outputImage, originalImage: outputImage, targetSize: nil)
+
+                // 2. 리사이징 및 회전 (extent 기준으로 판단)
+                let actualScale: CGFloat
+                let actualTransform: CGAffineTransform
+
+                if actualNeedsRotation {
+                    // 회전 필요: extent 기준으로 scale 계산
+                    let scaleX = renderSize.width / sourceExtent.height
+                    let scaleY = renderSize.height / sourceExtent.width
+                    actualScale = min(scaleX, scaleY)
+                    actualTransform = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 0, ty: 0)
+                } else {
+                    // 회전 불필요
+                    let scaleX = renderSize.width / sourceExtent.width
+                    let scaleY = renderSize.height / sourceExtent.height
+                    actualScale = min(scaleX, scaleY)
+                    actualTransform = .identity
+                }
+
+                let scaleTransform = CGAffineTransform(scaleX: actualScale, y: actualScale)
+                let transformWithRotation = scaleTransform.concatenating(actualTransform)
+
+                outputImage = outputImage.transformed(by: transformWithRotation)
+
+                // 3. transform 후 extent 정규화 (음수 좌표를 원점으로)
+                let transformedExtent = outputImage.extent
+
+                if transformedExtent.origin.x != 0 || transformedExtent.origin.y != 0 {
+                    let normalizeTransform = CGAffineTransform(
+                        translationX: -transformedExtent.origin.x,
+                        y: -transformedExtent.origin.y
+                    )
+                    outputImage = outputImage.transformed(by: normalizeTransform)
+                }
+
+                // 4. 중앙 정렬을 위한 offset 계산 (extent 기준)
+                let scaledWidth = sourceExtent.width * actualScale
+                let scaledHeight = sourceExtent.height * actualScale
+
+                let actualOffsetX: CGFloat
+                let actualOffsetY: CGFloat
+
+                if actualNeedsRotation {
+                    // 회전하는 경우: 90도 회전 후 중앙 정렬
+                    actualOffsetX = (renderSize.width - scaledHeight) / 2
+                    actualOffsetY = (renderSize.height - scaledWidth) / 2
+                } else {
+                    // 회전 불필요: 일반 중앙 정렬
+                    actualOffsetX = (renderSize.width - scaledWidth) / 2
+                    actualOffsetY = (renderSize.height - scaledHeight) / 2
+                }
+
+                let translateTransform = CGAffineTransform(translationX: actualOffsetX, y: actualOffsetY)
+                outputImage = outputImage.transformed(by: translateTransform)
+
+                // 5. 검정 배경 생성 (빈 공간을 채우기 위해)
+                let background = CIImage(color: CIColor.black).cropped(to: CGRect(origin: .zero, size: renderSize))
+
+                // 6. 이미지를 배경 위에 합성 (outputImage의 extent origin에 따라 위치 결정)
+                let composited = outputImage.composited(over: background)
+
+                // 7. renderSize 영역으로 crop
+                let finalOutput = composited.cropped(to: CGRect(origin: .zero, size: renderSize))
+                
+                // GPU 가속 컨텍스트를 명시적으로 전달
+                request.finish(with: finalOutput, context: Self.gpuContext)
+            }
+        )
+
+        composition.renderSize = renderSize
+
+        return composition
+    }
+
+    // MARK: - Filter Application Methods
 
     /// CIImage에 필터 적용
     /// - Parameters:
@@ -20,34 +196,52 @@ enum VideoFilterHelper {
     ///   - originalImage: ML 모델용 원본 이미지 (clamped되지 않은)
     ///   - targetSize: 목표 크기 (AnimeGAN 필터용, nil이면 원본 크기)
     /// - Returns: 필터가 적용된 이미지
-    static func applyFilter(_ filter: VideoFilter, to image: CIImage, originalImage: CIImage? = nil, targetSize: CGSize? = nil) -> CIImage {
-        switch filter {
-        case .blackAndWhite:
-            return applyBlackAndWhiteFilter(to: image)
-        case .warm:
-            return applyWarmFilter(to: image)
-        case .cool:
-            return applyCoolFilter(to: image)
-        case .animeGANHayao:
-            return applyAnimeGANHayao(to: originalImage ?? image, targetSize: targetSize)
+    private static func applyFilter(_ filter: VideoFilter, to image: CIImage, originalImage: CIImage, targetSize: CGSize? = nil) -> CIImage {
+        do {
+            return try applyFilterThrowing(filter, to: image, originalImage: originalImage, targetSize: targetSize)
+        } catch {
+            // 에러 발생 시 원본 이미지 반환
+            return image
         }
     }
 
-    // MARK: - Private Filter Methods
+    /// CIImage에 필터 적용 (throws)
+    /// - Parameters:
+    ///   - filter: 적용할 필터
+    ///   - image: 원본 이미지
+    ///   - originalImage: ML 모델용 원본 이미지 (clamped되지 않은)
+    ///   - targetSize: 목표 크기 (AnimeGAN 필터용, nil이면 원본 크기)
+    /// - Returns: 필터가 적용된 이미지
+    /// - Throws: VideoFilterError
+    static func applyFilterThrowing(_ filter: VideoFilter, to image: CIImage, originalImage: CIImage? = nil, targetSize: CGSize? = nil) throws -> CIImage {
+        switch filter {
+        case .blackAndWhite:
+            return try applyBlackAndWhiteFilter(to: image)
+        case .warm:
+            return try applyWarmFilter(to: image)
+        case .cool:
+            return try applyCoolFilter(to: image)
+        case .animeGANHayao:
+            return try applyAnimeGANHayao(to: originalImage ?? image, targetSize: targetSize)
+        }
+    }
 
     /// 흑백 필터 적용
-    private static func applyBlackAndWhiteFilter(to image: CIImage) -> CIImage {
+    private static func applyBlackAndWhiteFilter(to image: CIImage) throws -> CIImage {
         guard let filter = CIFilter(name: "CIPhotoEffectMono") else {
-            return image
+            throw VideoFilterError.filterCreationFailed("CIPhotoEffectMono")
         }
         filter.setValue(image, forKey: kCIInputImageKey)
-        return filter.outputImage ?? image
+        guard let outputImage = filter.outputImage else {
+            throw VideoFilterError.outputDataNotFound
+        }
+        return outputImage
     }
 
     /// 따뜻한 필터 적용
-    private static func applyWarmFilter(to image: CIImage) -> CIImage {
+    private static func applyWarmFilter(to image: CIImage) throws -> CIImage {
         guard let filter = CIFilter(name: "CITemperatureAndTint") else {
-            return image
+            throw VideoFilterError.filterCreationFailed("CITemperatureAndTint")
         }
 
         // 색온도를 높여서 따뜻한 느낌 (오렌지/노란 톤)
@@ -58,13 +252,16 @@ enum VideoFilterHelper {
         filter.setValue(warmVector, forKey: "inputNeutral")
         filter.setValue(neutralVector, forKey: "inputTargetNeutral")
 
-        return filter.outputImage ?? image
+        guard let outputImage = filter.outputImage else {
+            throw VideoFilterError.outputDataNotFound
+        }
+        return outputImage
     }
 
     /// 차가운 필터 적용
-    private static func applyCoolFilter(to image: CIImage) -> CIImage {
+    private static func applyCoolFilter(to image: CIImage) throws -> CIImage {
         guard let filter = CIFilter(name: "CITemperatureAndTint") else {
-            return image
+            throw VideoFilterError.filterCreationFailed("CITemperatureAndTint")
         }
 
         // 색온도를 낮춰서 차가운 느낌 (파란 톤)
@@ -75,7 +272,10 @@ enum VideoFilterHelper {
         filter.setValue(coolVector, forKey: "inputNeutral")
         filter.setValue(neutralVector, forKey: "inputTargetNeutral")
 
-        return filter.outputImage ?? image
+        guard let outputImage = filter.outputImage else {
+            throw VideoFilterError.outputDataNotFound
+        }
+        return outputImage
     }
 
     /// AnimeGANv3 CoreML 필터 적용
@@ -83,25 +283,23 @@ enum VideoFilterHelper {
     ///   - image: 원본 이미지
     ///   - targetSize: 목표 크기 (nil이면 원본 크기)
     /// - Returns: 필터가 적용된 이미지
-    private static func applyAnimeGANHayao(to image: CIImage, targetSize: CGSize? = nil) -> CIImage {
+    /// - Throws: VideoFilterError
+    private static func applyAnimeGANHayao(to image: CIImage, targetSize: CGSize? = nil) throws -> CIImage {
         // extent 유효성 검사
         guard image.extent.width > 0 && image.extent.height > 0,
               image.extent.width.isFinite && image.extent.height.isFinite else {
-            print("[Error] AnimeGAN: Invalid image extent: \(image.extent)")
-            return image
+            throw VideoFilterError.invalidImageExtent
         }
 
         // 캐싱된 모델 사용
         guard let mlModel = animeGANModel else {
-            print("[Error] AnimeGAN model not available")
-            return image
+            throw VideoFilterError.modelNotAvailable
         }
 
         do {
             // 모델 입력 이름 가져오기
             guard let inputName = mlModel.modelDescription.inputDescriptionsByName.keys.first else {
-                print("[Error] AnimeGAN: Failed to get input name")
-                return image
+                throw VideoFilterError.inputNameNotFound
             }
 
             // AnimeGAN 입력 크기는 512x512로 고정
@@ -117,8 +315,7 @@ enum VideoFilterHelper {
 
             // CIImage를 CVPixelBuffer로 변환
             guard let inputPixelBuffer = createPixelBuffer(from: resizedImage, size: modelSize) else {
-                print("[Error] AnimeGAN: Failed to create input pixel buffer")
-                return image
+                throw VideoFilterError.pixelBufferCreationFailed
             }
 
             // MLFeatureProvider 생성
@@ -140,13 +337,11 @@ enum VideoFilterHelper {
             // multiArrayValue로 폴백
             else if let multiArray = output.featureValue(for: outputName)?.multiArrayValue {
                 guard let pixelBuffer = createPixelBuffer(from: multiArray, size: modelSize) else {
-                    print("[Error] AnimeGAN: Failed to create pixel buffer from multi array")
-                    return image
+                    throw VideoFilterError.pixelBufferCreationFailed
                 }
                 outputImage = CIImage(cvPixelBuffer: pixelBuffer)
             } else {
-                print("[Error] AnimeGAN: Failed to get output data")
-                return image
+                throw VideoFilterError.outputDataNotFound
             }
 
             // 목표 크기로 리사이징
@@ -155,9 +350,10 @@ enum VideoFilterHelper {
             outputImage = outputImage.transformed(by: CGAffineTransform(scaleX: scaleBackX, y: scaleBackY))
 
             return outputImage
+        } catch let error as VideoFilterError {
+            throw error
         } catch {
-            print("[Error] AnimeGAN CoreML processing failed: \(error)")
-            return image
+            throw VideoFilterError.mlProcessingFailed(error)
         }
     }
 
@@ -180,7 +376,6 @@ enum VideoFilterHelper {
     /// AnimeGAN 모델 캐시 (재사용)
     private static let animeGANModel: MLModel? = {
         guard let modelURL = Bundle.main.url(forResource: "AnimeGANv3_Hayao_36_fp16", withExtension: "mlmodelc") else {
-            print("[Error] AnimeGANv3_Hayao_36_fp16.mlmodelc not found")
             return nil
         }
 
@@ -191,7 +386,6 @@ enum VideoFilterHelper {
 
             return try MLModel(contentsOf: modelURL, configuration: config)
         } catch {
-            print("[Error] Failed to load AnimeGAN model: \(error)")
             return nil
         }
     }()
@@ -253,7 +447,6 @@ enum VideoFilterHelper {
         )
 
         guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
-            print("[Error] AnimeGAN: Failed to create pixel buffer")
             return nil
         }
 
@@ -261,7 +454,6 @@ enum VideoFilterHelper {
         defer { CVPixelBufferUnlockBaseAddress(buffer, CVPixelBufferLockFlags(rawValue: 0)) }
 
         guard let baseAddress = CVPixelBufferGetBaseAddress(buffer) else {
-            print("[Error] AnimeGAN: Failed to get pixel buffer base address")
             return nil
         }
 
@@ -339,5 +531,25 @@ enum VideoFilterHelper {
         }
 
         return buffer
+    }
+    
+    /// 비디오 orientation 확인 헬퍼
+    private static func orientation(from transform: CGAffineTransform) -> (orientation: UIImage.Orientation, isPortrait: Bool) {
+        var assetOrientation = UIImage.Orientation.up
+        var isPortrait = false
+        
+        if transform.a == 0 && transform.b == 1.0 && transform.c == -1.0 && transform.d == 0 {
+            assetOrientation = .right
+            isPortrait = true
+        } else if transform.a == 0 && transform.b == -1.0 && transform.c == 1.0 && transform.d == 0 {
+            assetOrientation = .left
+            isPortrait = true
+        } else if transform.a == 1.0 && transform.b == 0 && transform.c == 0 && transform.d == 1.0 {
+            assetOrientation = .up
+        } else if transform.a == -1.0 && transform.b == 0 && transform.c == 0 && transform.d == -1.0 {
+            assetOrientation = .down
+        }
+        
+        return (assetOrientation, isPortrait)
     }
 }

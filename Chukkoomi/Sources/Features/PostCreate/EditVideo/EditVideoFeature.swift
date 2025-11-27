@@ -9,6 +9,7 @@ import ComposableArchitecture
 import Foundation
 import Photos
 import AVFoundation
+import WebKit
 
 @Reducer
 struct EditVideoFeature {
@@ -52,6 +53,29 @@ struct EditVideoFeature {
 
         // Alert
         @Presents var alert: AlertState<Action.Alert>?
+
+        // Payment (결제 관련)
+        var webView: WKWebView?
+        var isPurchaseModalPresented: Bool = false
+        var pendingPurchaseFilter: PaidFilter?
+        var isProcessingPayment: Bool = false
+        var paymentError: String?
+        var availableFilters: [PaidFilter] = []  // 사용 가능한 유료 필터 목록
+        var purchasedFilterPostIds: Set<String> = []  // 구매한 필터의 postId
+
+        // 구매한 VideoFilter 타입 계산
+        var purchasedFilterTypes: Set<VideoFilter> {
+            Set(availableFilters
+                .filter { purchasedFilterPostIds.contains($0.id) }
+                .compactMap { filter -> VideoFilter? in
+                    // ImageFilter를 VideoFilter로 매핑
+                    switch filter.imageFilter {
+                    case .animeGANHayao: return .animeGANHayao
+                    default: return nil
+                    }
+                }
+            )
+        }
 
         init(videoAsset: PHAsset) {
             self.videoAsset = videoAsset
@@ -107,6 +131,7 @@ struct EditVideoFeature {
     // MARK: - Action
     @CasePathable
     enum Action: Equatable {
+        case onAppear
         case playPauseButtonTapped
         case seekBackward
         case seekForward
@@ -144,11 +169,24 @@ struct EditVideoFeature {
         case updateBackgroundMusicEndTime(UUID, Double)
         case updateBackgroundMusicVolume(UUID, Float)
 
+        // Payment Actions
+        case loadPurchaseHistory
+        case purchaseHistoryLoaded([PaidFilter], Set<String>)  // availableFilters, purchasedPostIds
+        case webViewCreated(WKWebView)
+        case checkPaidFilterPurchase  // 유료 필터 구매 확인
+        case showPurchaseModal(PaidFilter)
+        case dismissPurchaseModal
+        case purchaseButtonTapped
+        case paymentCompleted(Result<PaymentResponseDTO, PaymentError>)
+        case proceedToExport  // 실제 export 동작
+
         // Alert
         case alert(PresentationAction<Alert>)
 
         enum Alert: Equatable {
             case confirmSubtitleOverlapError
+            case confirmExportError
+            case confirmFilterError
         }
 
         // Delegate
@@ -163,7 +201,18 @@ struct EditVideoFeature {
     var body: some ReducerOf<Self> {
         Reduce { state, action in
             switch action {
+            case .onAppear:
+                return .send(.loadPurchaseHistory)
+
             case .playPauseButtonTapped:
+                // 재생을 시작할 때 (현재 일시정지 상태)
+                if !state.isPlaying {
+                    // playhead가 영상 끝에 있으면 처음으로 돌아가기
+                    let endTime = state.editState.trimEndTime
+                    if state.currentTime >= endTime - 0.1 { // 끝에서 0.1초 이내
+                        state.seekTarget = state.editState.trimStartTime
+                    }
+                }
                 state.isPlaying.toggle()
                 return .none
 
@@ -262,33 +311,23 @@ struct EditVideoFeature {
                 state.isApplyingFilter = false
                 return .none
 
-            case .preProcessFailed:
+            case .preProcessFailed(let error):
                 state.isApplyingFilter = false
                 state.editState.selectedFilter = nil  // 필터 선택 해제
+                state.alert = AlertState {
+                    TextState("필터 적용 실패")
+                } actions: {
+                    ButtonState(role: .cancel, action: .confirmFilterError) {
+                        TextState("확인")
+                    }
+                } message: {
+                    TextState("필터를 적용하는데 실패했습니다.\n\(error)")
+                }
                 return .none
 
             case .completeButtonTapped:
-                state.isExporting = true
-                state.exportProgress = 0.0
-
-                return .run { [videoAsset = state.videoAsset, editState = state.editState, preProcessedVideoURL = state.preProcessedVideoURL] send in
-                    do {
-                        let exporter = VideoExporter()
-                        let exportedURL = try await exporter.export(
-                            asset: videoAsset,
-                            editState: editState,
-                            preProcessedVideoURL: preProcessedVideoURL,
-                            progressHandler: { progress in
-                                Task {
-                                    await send(.exportProgressUpdated(progress))
-                                }
-                            }
-                        )
-                        await send(.exportCompleted(exportedURL))
-                    } catch {
-                        await send(.exportFailed(error.localizedDescription))
-                    }
-                }
+                // 유료 필터 체크
+                return .send(.checkPaidFilterPurchase)
 
             case .exportProgressUpdated(let progress):
                 state.exportProgress = progress
@@ -297,14 +336,20 @@ struct EditVideoFeature {
             case .exportCompleted(let url):
                 state.isExporting = false
                 state.exportProgress = 1.0
-                print("✅ 영상 내보내기 완료: \(url)")
-                // 편집된 영상을 PostCreateFeature로 전달
                 return .send(.delegate(.videoExportCompleted(url)))
 
             case .exportFailed(let error):
                 state.isExporting = false
                 state.exportProgress = 0.0
-                print("❌ 영상 내보내기 실패: \(error)")
+                state.alert = AlertState {
+                    TextState("영상 내보내기 실패")
+                } actions: {
+                    ButtonState(role: .cancel, action: .confirmExportError) {
+                        TextState("확인")
+                    }
+                } message: {
+                    TextState(error)
+                }
                 return .none
 
             case .playbackEnded:
@@ -631,6 +676,160 @@ struct EditVideoFeature {
                 }
                 return .none
 
+            // MARK: - Payment Actions
+
+            case .loadPurchaseHistory:
+                return .run { send in
+                    // 사용 가능한 유료 필터 목록 가져오기
+                    let availableFilters = await PurchaseManager.shared.getAvailableFilters()
+
+                    // 구매한 필터의 postId 추출 (각각 isPurchased 호출)
+                    var purchasedPostIds: Set<String> = []
+                    for filter in availableFilters {
+                        if await PurchaseManager.shared.isPurchased(filter.imageFilter) {
+                            purchasedPostIds.insert(filter.id)
+                        }
+                    }
+
+                    await send(.purchaseHistoryLoaded(availableFilters, purchasedPostIds))
+                }
+
+            case let .purchaseHistoryLoaded(availableFilters, purchasedPostIds):
+                state.availableFilters = availableFilters
+                state.purchasedFilterPostIds = purchasedPostIds
+                return .none
+
+            case let .webViewCreated(webView):
+                state.webView = webView
+
+                // 결제 대기 중이면 실제 결제 시작
+                if state.isProcessingPayment, let paidFilter = state.pendingPurchaseFilter {
+
+                    // 결제 데이터 생성
+                    let payment = PaymentService.shared.createPayment(
+                        amount: "\(paidFilter.price)",
+                        productName: paidFilter.title,
+                        buyerName: "사용자",
+                        postId: paidFilter.id
+                    )
+
+                    return .run { send in
+                        do {
+                            // 결제 요청 + 서버 검증
+                            let validated = try await PaymentService.shared.requestPayment(
+                                webView: webView,
+                                payment: payment,
+                                postId: paidFilter.id
+                            )
+
+                            await send(.paymentCompleted(.success(validated)))
+                        } catch let error as PaymentError {
+                            await send(.paymentCompleted(.failure(error)))
+                        } catch {
+                            await send(.paymentCompleted(.failure(.validationFailed)))
+                        }
+                    }
+                }
+
+                return .none
+
+            case .checkPaidFilterPurchase:
+                // 적용된 필터가 유료 필터인지 확인
+                guard let appliedFilter = state.editState.selectedFilter else {
+                    // 필터가 없으면 바로 완료
+                    return .send(.proceedToExport)
+                }
+
+                // 유료 필터가 아니면 바로 완료
+                guard appliedFilter.isPaid else {
+                    return .send(.proceedToExport)
+                }
+
+                // 이미 구매한 필터면 바로 완료
+                return .run { [purchasedFilterTypes = state.purchasedFilterTypes, availableFilters = state.availableFilters] send in
+                    if purchasedFilterTypes.contains(appliedFilter) {
+                        // 구매함 → 바로 완료
+                        await send(.proceedToExport)
+                    } else {
+                        // 미구매 → 구매 모달 표시
+                        if let paidFilter = availableFilters.first(where: { $0.imageFilter == .animeGANHayao }) {
+                            await send(.showPurchaseModal(paidFilter))
+                        } else {
+                            // 필터 정보를 찾을 수 없음 (서버 오류 또는 아직 로드되지 않음)
+                            await send(.proceedToExport)  // 일단 진행
+                        }
+                    }
+                }
+
+            case let .showPurchaseModal(paidFilter):
+                state.pendingPurchaseFilter = paidFilter
+                state.isPurchaseModalPresented = true
+                state.paymentError = nil
+                return .none
+
+            case .dismissPurchaseModal:
+                state.isPurchaseModalPresented = false
+                state.pendingPurchaseFilter = nil
+                state.paymentError = nil
+                return .none
+
+            case .purchaseButtonTapped:
+
+                guard state.pendingPurchaseFilter != nil else {
+                    return .none
+                }
+
+                // Purchase modal 닫고 결제 모드 진입
+                // WebView가 생성되면 webViewCreated에서 실제 결제 시작
+                state.isPurchaseModalPresented = false
+                state.isProcessingPayment = true
+                state.paymentError = nil
+
+                return .none
+
+            case let .paymentCompleted(.success(paymentDTO)):
+                state.isProcessingPayment = false
+
+                // 로컬 캐시에 구매 기록 저장
+                state.purchasedFilterPostIds.insert(paymentDTO.postId)
+
+                return .run { send in
+                    await PurchaseManager.shared.markAsPurchased(postId: paymentDTO.postId)
+
+                    // 모달 닫고 export 진행
+                    await send(.dismissPurchaseModal)
+                    await send(.proceedToExport)
+                }
+
+            case let .paymentCompleted(.failure(error)):
+                state.isProcessingPayment = false
+                state.paymentError = error.localizedDescription
+                return .none
+
+            case .proceedToExport:
+                // 기존 export 로직 (이미지 합성 및 전달)
+                state.isExporting = true
+                state.exportProgress = 0.0
+
+                return .run { [videoAsset = state.videoAsset, editState = state.editState, preProcessedVideoURL = state.preProcessedVideoURL] send in
+                    do {
+                        let exporter = VideoExporter()
+                        let exportedURL = try await exporter.export(
+                            asset: videoAsset,
+                            editState: editState,
+                            preProcessedVideoURL: preProcessedVideoURL,
+                            progressHandler: { progress in
+                                Task {
+                                    await send(.exportProgressUpdated(progress))
+                                }
+                            }
+                        )
+                        await send(.exportCompleted(exportedURL))
+                    } catch {
+                        await send(.exportFailed(error.localizedDescription))
+                    }
+                }
+
             case .alert:
                 return .none
 
@@ -676,6 +875,99 @@ struct EditVideoFeature {
         }
 
         return desiredEndTime
+    }
+}
+
+// MARK: - Action Equatable Conformance
+extension EditVideoFeature.Action {
+    static func == (lhs: EditVideoFeature.Action, rhs: EditVideoFeature.Action) -> Bool {
+        switch (lhs, rhs) {
+        case (.onAppear, .onAppear),
+             (.playPauseButtonTapped, .playPauseButtonTapped),
+             (.seekBackward, .seekBackward),
+             (.seekForward, .seekForward),
+             (.seekCompleted, .seekCompleted),
+             (.filterApplied, .filterApplied),
+             (.playbackEnded, .playbackEnded),
+             (.addSubtitle, .addSubtitle),
+             (.confirmSubtitleInput, .confirmSubtitleInput),
+             (.cancelSubtitleInput, .cancelSubtitleInput),
+             (.showMusicSelection, .showMusicSelection),
+             (.cancelMusicSelection, .cancelMusicSelection),
+             (.completeButtonTapped, .completeButtonTapped),
+             (.loadPurchaseHistory, .loadPurchaseHistory),
+             (.checkPaidFilterPurchase, .checkPaidFilterPurchase),
+             (.dismissPurchaseModal, .dismissPurchaseModal),
+             (.purchaseButtonTapped, .purchaseButtonTapped),
+             (.proceedToExport, .proceedToExport):
+            return true
+
+        case let (.seekToTime(l), .seekToTime(r)),
+             let (.updateCurrentTime(l), .updateCurrentTime(r)),
+             let (.updateDuration(l), .updateDuration(r)),
+             let (.updateTrimStartTime(l), .updateTrimStartTime(r)),
+             let (.updateTrimEndTime(l), .updateTrimEndTime(r)),
+             let (.exportProgressUpdated(l), .exportProgressUpdated(r)):
+            return l == r
+
+        case let (.updateVideoDisplaySize(l), .updateVideoDisplaySize(r)):
+            return l == r
+
+        case let (.filterSelected(l), .filterSelected(r)):
+            return l == r
+
+        case let (.preProcessCompleted(l), .preProcessCompleted(r)),
+             let (.exportCompleted(l), .exportCompleted(r)),
+             let (.selectMusic(l), .selectMusic(r)):
+            return l == r
+
+        case let (.preProcessFailed(l), .preProcessFailed(r)),
+             let (.exportFailed(l), .exportFailed(r)),
+             let (.updateSubtitleInputText(l), .updateSubtitleInputText(r)):
+            return l == r
+
+        case let (.editSubtitle(l), .editSubtitle(r)),
+             let (.removeSubtitle(l), .removeSubtitle(r)),
+             let (.removeBackgroundMusic(l), .removeBackgroundMusic(r)):
+            return l == r
+
+        case let (.updateSubtitleStartTime(lid, lt), .updateSubtitleStartTime(rid, rt)),
+             let (.updateSubtitleEndTime(lid, lt), .updateSubtitleEndTime(rid, rt)),
+             let (.updateBackgroundMusicStartTime(lid, lt), .updateBackgroundMusicStartTime(rid, rt)),
+             let (.updateBackgroundMusicEndTime(lid, lt), .updateBackgroundMusicEndTime(rid, rt)):
+            return lid == rid && lt == rt
+
+        case let (.updateBackgroundMusicVolume(lid, lv), .updateBackgroundMusicVolume(rid, rv)):
+            return lid == rid && lv == rv
+
+        case let (.purchaseHistoryLoaded(lf, lp), .purchaseHistoryLoaded(rf, rp)):
+            return lf == rf && lp == rp
+
+        case (.webViewCreated(_), .webViewCreated(_)):
+            return true  // WKWebView는 비교 불가, 항상 true
+
+        case let (.showPurchaseModal(l), .showPurchaseModal(r)):
+            return l == r
+
+        case let (.paymentCompleted(l), .paymentCompleted(r)):
+            switch (l, r) {
+            case let (.success(ls), .success(rs)):
+                return ls == rs
+            case let (.failure(lf), .failure(rf)):
+                return lf.localizedDescription == rf.localizedDescription
+            default:
+                return false
+            }
+
+        case let (.alert(l), .alert(r)):
+            return l == r
+
+        case let (.delegate(l), .delegate(r)):
+            return l == r
+
+        default:
+            return false
+        }
     }
 }
 

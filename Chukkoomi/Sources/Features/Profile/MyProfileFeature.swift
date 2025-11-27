@@ -34,6 +34,7 @@ struct MyProfileFeature {
         @PresentationState var followList: FollowListFeature.State?
         @PresentationState var settingsMenu: ConfirmationDialogState<Action.SettingsMenuAction>?
         @PresentationState var postDetail: PostFeature.State?
+        @PresentationState var alert: AlertState<Action.Alert>?
         
         // Computed properties
         var nickname: String {
@@ -99,6 +100,12 @@ struct MyProfileFeature {
         case followList(PresentationAction<FollowListFeature.Action>)
         case settingsMenu(PresentationAction<SettingsMenuAction>)
         case postDetail(PresentationAction<PostFeature.Action>)
+        case alert(PresentationAction<Alert>)
+
+        // Error handling
+        case profileLoadFailed
+        case deleteAccountFailed
+        case postLoadFailed
 
         // Delegate
         case delegate(Delegate)
@@ -107,6 +114,8 @@ struct MyProfileFeature {
             case logout
             case deleteAccount
         }
+
+        enum Alert: Equatable {}
 
         enum Delegate: Equatable {
             case switchToPostTab
@@ -137,8 +146,7 @@ struct MyProfileFeature {
                             ).toDomain
                             await send(.profileLoaded(profile))
                         } catch {
-                            // TODO: 에러 처리
-                            print("프로필 로드 실패: \(error)")
+                            await send(.profileLoadFailed)
                         }
                     },
                     currentTab == .posts ? .send(.fetchPosts) : .send(.fetchBookmarks)
@@ -214,7 +222,6 @@ struct MyProfileFeature {
 
             case .fetchPosts:
                 guard let userId = UserDefaultsHelper.userId else {
-                    print("User ID가 없습니다")
                     return .none
                 }
 
@@ -228,7 +235,6 @@ struct MyProfileFeature {
                         dump(response)
                         let postImages = response.data.compactMap { dto -> PostImage? in
                             let post = dto.toDomain
-                            print(post)
                             guard post.files.count >= 2 else { return nil }
                             let thumbnailPath = post.files[1] // 썸네일
                             let originalPath = post.files[0] // 원본
@@ -238,7 +244,6 @@ struct MyProfileFeature {
 
                         await send(.postImagesLoaded(postImages, response.nextCursor))
                     } catch {
-                        print("게시물 로드 실패: \(error)")
                         await send(.postImagesLoaded([], nil))
                     }
                 }
@@ -264,7 +269,6 @@ struct MyProfileFeature {
 
                         await send(.bookmarkImagesLoaded(bookmarkImages, response.nextCursor))
                     } catch {
-                        print("북마크 로드 실패: \(error)")
                         await send(.bookmarkImagesLoaded([], nil))
                     }
                 }
@@ -298,7 +302,6 @@ struct MyProfileFeature {
 
                         await send(.postImagesLoaded(postImages, response.nextCursor))
                     } catch {
-                        print("다음 페이지 로드 실패: \(error)")
                         await send(.postImagesLoaded([], nil))
                     }
                 }
@@ -330,7 +333,6 @@ struct MyProfileFeature {
 
                         await send(.bookmarkImagesLoaded(bookmarkImages, response.nextCursor))
                     } catch {
-                        print("다음 페이지 로드 실패: \(error)")
                         await send(.bookmarkImagesLoaded([], nil))
                     }
                 }
@@ -417,7 +419,6 @@ struct MyProfileFeature {
                                         realm.delete(userSearchWords)
                                     }
                                 } catch {
-                                    print("최근 검색어 삭제 실패: \(error)")
                                 }
                             }
                         }
@@ -425,8 +426,7 @@ struct MyProfileFeature {
                         // 성공 시 로그아웃 처리
                         await send(.logoutCompleted)
                     } catch {
-                        // TODO: 에러 처리 - 사용자에게 알림 표시 필요
-                        print("회원탈퇴 실패: \(error)")
+                        await send(.deleteAccountFailed)
                     }
                 }
 
@@ -449,7 +449,7 @@ struct MyProfileFeature {
                         let post = dto.toDomain
                         await send(.postLoaded(post))
                     } catch {
-                        print("게시글 단건 조회 실패: \(error)")
+                        await send(.postLoadFailed)
                     }
                 }
 
@@ -469,6 +469,46 @@ struct MyProfileFeature {
             case .settingsMenu:
                 return .none
 
+            case .profileLoadFailed:
+                state.isLoading = false
+                state.alert = AlertState {
+                    TextState("프로필 로드 실패")
+                } actions: {
+                    ButtonState(role: .cancel) {
+                        TextState("확인")
+                    }
+                } message: {
+                    TextState("프로필 정보를 불러올 수 없습니다.\n다시 시도해주세요.")
+                }
+                return .none
+
+            case .deleteAccountFailed:
+                state.alert = AlertState {
+                    TextState("회원탈퇴 실패")
+                } actions: {
+                    ButtonState(role: .cancel) {
+                        TextState("확인")
+                    }
+                } message: {
+                    TextState("회원탈퇴에 실패했습니다.\n다시 시도해주세요.")
+                }
+                return .none
+
+            case .postLoadFailed:
+                state.alert = AlertState {
+                    TextState("게시글 로드 실패")
+                } actions: {
+                    ButtonState(role: .cancel) {
+                        TextState("확인")
+                    }
+                } message: {
+                    TextState("게시글을 불러올 수 없습니다.\n다시 시도해주세요.")
+                }
+                return .none
+
+            case .alert:
+                return .none
+
             case .delegate:
                 return .none
             }
@@ -486,6 +526,7 @@ struct MyProfileFeature {
         .ifLet(\.$postDetail, action: \.postDetail) {
             PostFeature()
         }
+        .ifLet(\.$alert, action: \.alert)
     }
 }
 

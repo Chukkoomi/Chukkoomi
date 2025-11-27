@@ -125,7 +125,6 @@ struct AsyncMediaImageView: View {
             // Task가 취소되었을 때는 로그를 남기지 않음
             isLoading = false
         } catch {
-            print("미디어 로드 실패: \(error)")
             isLoading = false
         }
     }

@@ -69,6 +69,7 @@ struct SearchView: View {
             }
             // 네비게이션 연결
             .modifier(SearchNavigation(store: store))
+            .alert(store: store.scope(state: \.$alert, action: \.alert))
         }
     }
 

@@ -66,6 +66,7 @@ struct EditVideoView: View {
                                 trimEndTime: viewStore.editState.trimEndTime,
                                 subtitles: viewStore.editState.subtitles,
                                 backgroundMusics: viewStore.editState.backgroundMusics,
+                                isPlaying: viewStore.isPlaying,
                                 onTrimStartChanged: { time in
                                     viewStore.send(.updateTrimStartTime(time))
                                 },
@@ -102,6 +103,7 @@ struct EditVideoView: View {
                             // 필터 선택
                             FilterSelectionView(
                                 selectedFilter: viewStore.editState.selectedFilter,
+                                purchasedFilterTypes: viewStore.purchasedFilterTypes,
                                 onFilterSelected: { filter in
                                     viewStore.send(.filterSelected(filter))
                                 }
@@ -163,6 +165,33 @@ struct EditVideoView: View {
                 }
             }
             .alert(store: store.scope(state: \.$alert, action: \.alert))
+            .onAppear {
+                viewStore.send(.onAppear)
+            }
+            .overlay {
+                if viewStore.isPurchaseModalPresented {
+                    PurchaseModalView(viewStore: viewStore)
+                }
+            }
+            .overlay {
+                // 구매하기 버튼 누르면 그때만 WebView 표시
+                if viewStore.isProcessingPayment {
+                    ZStack {
+                        Color.black.opacity(0.9)
+                            .ignoresSafeArea()
+
+                        IamportWebView(webView: Binding(
+                            get: { viewStore.webView },
+                            set: { webView in
+                                if let webView {
+                                    viewStore.send(.webViewCreated(webView))
+                                }
+                            }
+                        ))
+                        .background(Color.white)
+                    }
+                }
+            }
         }
     }
 }
@@ -640,9 +669,9 @@ private struct SubtitleOverlayView: View {
             }), videoDisplaySize.width > 0 && videoDisplaySize.height > 0 {
 
                 // 실제 영상과 동일한 비율로 자막 크기 계산
-                // VideoCompositorWithSubtitles와 동일하게: width * 0.06
+                // VideoCompositor와 동일하게: width * 0.06
                 let fontSize = videoDisplaySize.width * 0.06
-                let outlineOffset: CGFloat = 2.0
+                let outlineOffset: CGFloat = 1.5
 
                 // 컨테이너 내에서 비디오가 표시되는 영역 계산 (중앙 정렬)
                 let containerSize = geometry.size
@@ -654,7 +683,7 @@ private struct SubtitleOverlayView: View {
                     ForEach(0..<8) { i in
                         Text(currentSubtitle.text)
                             .font(.system(size: fontSize, weight: .bold))
-                            .foregroundStyle(.black)
+                            .foregroundStyle(.black.opacity(0.6))
                             .offset(
                                 x: CGFloat(i % 3 - 1) * outlineOffset,
                                 y: CGFloat(i / 3 - 1) * outlineOffset
@@ -823,6 +852,7 @@ private struct VideoTimelineEditor: UIViewRepresentable {
     let trimEndTime: Double
     let subtitles: [EditVideoFeature.Subtitle]
     let backgroundMusics: [EditVideoFeature.BackgroundMusic]
+    let isPlaying: Bool
     let onTrimStartChanged: (Double) -> Void
     let onTrimEndChanged: (Double) -> Void
     let onSeek: (Double) -> Void
@@ -1140,24 +1170,32 @@ private struct VideoTimelineEditor: UIViewRepresentable {
             playheadView.layer.zPosition = 1000
             playheadView.rulerHeight = rulerHeight
             playheadView.gapHeight = gapBetweenRulerAndTimeline
+            playheadView.duration = safeDuration
+            playheadView.timelineWidth = timelineWidth
+            playheadView.padding = timelinePadding
+            playheadView.onSeek = onSeek
             containerView.addSubview(playheadView)
             context.coordinator.playheadView = playheadView
             playheadView.setNeedsDisplay()
         }
-        
+
         if let playheadView = context.coordinator.playheadView {
             let oldHeight = playheadView.frame.size.height
             let newHeight = totalHeight
-            
+
             // 높이가 변경되면 다시 그리기
             if oldHeight != newHeight {
                 playheadView.frame.size.height = newHeight
                 playheadView.setNeedsDisplay()
             }
-            
+
             // 최신 ruler/gap 값 전달
             playheadView.rulerHeight = rulerHeight
             playheadView.gapHeight = gapBetweenRulerAndTimeline
+            playheadView.duration = safeDuration
+            playheadView.timelineWidth = timelineWidth
+            playheadView.padding = timelinePadding
+            playheadView.onSeek = onSeek
             
             // playhead를 항상 맨 앞으로
             containerView.bringSubviewToFront(playheadView)
@@ -1210,8 +1248,8 @@ private struct VideoTimelineEditor: UIViewRepresentable {
             }
         }
         
-        // 스크롤 자동 조정 (playhead가 화면 중앙에 오도록)
-        if !context.coordinator.isUserScrolling {
+        // 스크롤 자동 조정 (재생 중일 때만 playhead가 화면 중앙에 오도록)
+        if isPlaying {
             let targetOffsetX = playheadPosition - screenWidth / 2
             let maxOffsetX = max(0, timelineWidth - screenWidth)
             let clampedOffsetX = max(0, min(targetOffsetX, maxOffsetX))
@@ -1257,7 +1295,6 @@ private struct VideoTimelineEditor: UIViewRepresentable {
         var timelineHostingController: UIHostingController<AnyView>?
         var rulerView: TimeRulerView?
         var timeLabel: UILabel?
-        var isUserScrolling = false
         var isSeeking = false  // seek 중인지 추적
         var subtitleBlocks: [UUID: SubtitleBlockUIView] = [:]  // 자막 블록 캐시
         var backgroundMusicBlocks: [BackgroundMusicBlockUIView] = []  // 배경음악 블록들
@@ -1265,20 +1302,6 @@ private struct VideoTimelineEditor: UIViewRepresentable {
         weak var scrollView: UIScrollView?  // ScrollView 참조
         var timelineOriginY: CGFloat = 0  // 타임라인 Y 위치
         var timelineHeight: CGFloat = 0  // 타임라인 높이
-        
-        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
-            isUserScrolling = true
-        }
-        
-        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
-            if !decelerate {
-                isUserScrolling = false
-            }
-        }
-        
-        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
-            isUserScrolling = false
-        }
 
         func updateLoadingIndicator(isLoading: Bool) {
             guard let scrollView = scrollView else { return }
@@ -1320,23 +1343,38 @@ private class TimeRulerView: UIView {
     var padding: CGFloat = 20
     var onSeek: ((Double) -> Void)?
     private let timeFont = UIFont.systemFont(ofSize: 14, weight: .regular)
-    
+
     override init(frame: CGRect) {
         super.init(frame: frame)
-        setupTapGesture()
+        setupGesture()
     }
-    
+
     required init?(coder: NSCoder) {
         super.init(coder: coder)
-        setupTapGesture()
+        setupGesture()
     }
-    
-    private func setupTapGesture() {
+
+    private func setupGesture() {
+        // Pan gesture로 변경하여 드래그 중에도 seek 가능
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        addGestureRecognizer(panGesture)
+
+        // Tap gesture도 유지 (빠른 터치용)
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
         addGestureRecognizer(tapGesture)
+
         isUserInteractionEnabled = true
     }
-    
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        let location = gesture.location(in: self)
+        // 패딩을 고려한 시간 계산
+        let adjustedX = location.x - padding
+        let tappedTime = Double(adjustedX) / Double(pixelsPerSecond)
+        let clampedTime = min(max(tappedTime, 0), duration)
+        onSeek?(clampedTime)
+    }
+
     @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
         let location = gesture.location(in: self)
         // 패딩을 고려한 시간 계산
@@ -1362,8 +1400,8 @@ private class TimeRulerView: UIView {
             .paragraphStyle: paragraphStyle
         ]
 
-        // 1초 간격으로 눈금 그리기
-        let totalSeconds = Int(ceil(duration))
+        // 1초 간격으로 눈금 그리기 (실제 duration 이하의 시간만 표기)
+        let totalSeconds = Int(duration)
         for second in 0...totalSeconds {
             // 패딩을 고려한 x 위치
             let xPosition = padding + CGFloat(second) * pixelsPerSecond
@@ -1397,17 +1435,40 @@ private class PlayheadUIView: UIView {
     // 눈금자 높이와 그 아래 gap 높이 (삼각형은 gap에, 선은 그 아래에서 시작)
     var rulerHeight: CGFloat = 20
     var gapHeight: CGFloat = 16
-    
+    var duration: Double = 0
+    var timelineWidth: CGFloat = 0
+    var padding: CGFloat = 0
+    var onSeek: ((Double) -> Void)?
+
     override init(frame: CGRect) {
         super.init(frame: frame)
-        self.isUserInteractionEnabled = false
+        self.isUserInteractionEnabled = true
         self.isOpaque = false
         self.backgroundColor = .clear
         self.contentMode = .redraw
+        setupGesture()
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    private func setupGesture() {
+        let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        addGestureRecognizer(panGesture)
+    }
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        guard let superview = superview, duration > 0, timelineWidth > 0 else { return }
+
+        let location = gesture.location(in: superview)
+
+        // padding을 고려한 시간 계산
+        let adjustedX = location.x - padding
+        let tappedTime = Double(adjustedX) / Double((timelineWidth - padding * 2) / CGFloat(duration))
+        let clampedTime = min(max(tappedTime, 0), duration)
+
+        onSeek?(clampedTime)
     }
     
     override func draw(_ rect: CGRect) {
@@ -1744,13 +1805,13 @@ private class SubtitleBlockUIView: UIView {
     }
     
     private func setupViews() {
-        backgroundColor = UIColor.systemRed.withAlphaComponent(0.6)
+        backgroundColor = UIColor.systemBlue.withAlphaComponent(0.6)
         layer.cornerRadius = 4
         clipsToBounds = true
 
         // 왼쪽 핸들
         leftHandle = UIView()
-        leftHandle.backgroundColor = UIColor.systemRed
+        leftHandle.backgroundColor = UIColor.systemBlue
         leftHandle.layer.cornerRadius = 4
         addSubview(leftHandle)
 
@@ -1773,7 +1834,7 @@ private class SubtitleBlockUIView: UIView {
 
         // 오른쪽 핸들
         rightHandle = UIView()
-        rightHandle.backgroundColor = UIColor.systemRed
+        rightHandle.backgroundColor = UIColor.systemBlue
         rightHandle.layer.cornerRadius = 4
         addSubview(rightHandle)
 
@@ -1962,13 +2023,13 @@ private class BackgroundMusicBlockUIView: UIView {
     }
 
     private func setupViews() {
-        backgroundColor = UIColor.systemGreen.withAlphaComponent(0.6)
+        backgroundColor = UIColor.systemBlue.withAlphaComponent(0.6)
         layer.cornerRadius = 4
         clipsToBounds = true
 
         // 왼쪽 핸들
         leftHandle = UIView()
-        leftHandle.backgroundColor = UIColor.systemGreen
+        leftHandle.backgroundColor = UIColor.systemBlue
         leftHandle.layer.cornerRadius = 4
         addSubview(leftHandle)
 
@@ -1991,7 +2052,7 @@ private class BackgroundMusicBlockUIView: UIView {
 
         // 오른쪽 핸들
         rightHandle = UIView()
-        rightHandle.backgroundColor = UIColor.systemGreen
+        rightHandle.backgroundColor = UIColor.systemBlue
         rightHandle.layer.cornerRadius = 4
         addSubview(rightHandle)
 
@@ -2240,6 +2301,7 @@ private class BackgroundMusicBlockUIView: UIView {
 // MARK: - Filter Selection View
 private struct FilterSelectionView: View {
     let selectedFilter: VideoFilter?
+    let purchasedFilterTypes: Set<VideoFilter>  // 구매한 필터 타입
     let onFilterSelected: (VideoFilter) -> Void
 
     var body: some View {
@@ -2249,6 +2311,7 @@ private struct FilterSelectionView: View {
                     FilterButton(
                         filter: filter,
                         isSelected: selectedFilter == filter,
+                        isPurchased: isPurchased(filter),
                         action: {
                             onFilterSelected(filter)
                         }
@@ -2258,32 +2321,61 @@ private struct FilterSelectionView: View {
             .padding(.horizontal, 16)
         }
     }
+
+    // 필터 구매 여부 확인
+    private func isPurchased(_ filter: VideoFilter) -> Bool {
+        // 유료 필터가 아니면 항상 true
+        guard filter.isPaid else { return true }
+
+        // 캐시된 purchasedFilterTypes에서 확인 (동기적으로)
+        return purchasedFilterTypes.contains(filter)
+    }
 }
 
 // MARK: - Filter Button
 private struct FilterButton: View {
     let filter: VideoFilter
     let isSelected: Bool
+    let isPurchased: Bool  // 구매 여부
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             VStack(spacing: 8) {
                 // 필터 미리보기
-                Image(image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 80, height: 80)
-                    .customRadius()
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .strokeBorder(isSelected ? Color(uiColor: UIColor.systemIndigo) : Color.clear, lineWidth: 4)
-                    )
+                ZStack {
+                    Image(image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 80, height: 80)
+                        .customRadius()
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(isSelected ? Color(uiColor: UIColor.systemBlue) : Color.clear, lineWidth: 4)
+                        )
+
+                    // Lock/Unlock 아이콘 (유료 필터인 경우)
+                    if filter.isPaid {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                Image(systemName: isPurchased ? "lock.open.fill" : "lock.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.white)
+                                    .padding(4)
+                                    .background(isPurchased ? Color.green.opacity(0.8) : Color.red.opacity(0.8))
+                                    .clipShape(Circle())
+                                    .padding(6)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
 
                 // 필터 이름
                 Text(filter.displayName)
                     .font(.appCaption)
-                    .foregroundStyle(isSelected ? Color(uiColor: UIColor.systemIndigo) : .black)
+                    .foregroundStyle(isSelected ? Color(uiColor: UIColor.systemBlue) : .black)
             }
         }
     }
@@ -2522,6 +2614,98 @@ private struct SubtitleInputOverlayView: View {
             .onAppear {
                 isFocused = true
             }
+        }
+    }
+}
+
+// MARK: - Purchase Modal View
+private struct PurchaseModalView: View {
+    let viewStore: ViewStoreOf<EditVideoFeature>
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    viewStore.send(.dismissPurchaseModal)
+                }
+
+            VStack(spacing: 20) {
+                // 헤더
+                HStack {
+                    Text("유료 필터 구매")
+                        .font(.title2)
+                        .fontWeight(.bold)
+
+                    Spacer()
+
+                    Button {
+                        viewStore.send(.dismissPurchaseModal)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundColor(.gray)
+                    }
+                }
+
+                Divider()
+
+                if let paidFilter = viewStore.pendingPurchaseFilter {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text(paidFilter.title)
+                            .font(.headline)
+
+                        Text(paidFilter.content)
+                            .font(.body)
+                            .foregroundColor(.secondary)
+
+                        HStack {
+                            Text("가격:")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Text("\(paidFilter.price)원")
+                                .font(.title3)
+                                .fontWeight(.semibold)
+                        }
+                    }
+                }
+
+                // 에러 메시지
+                if let errorMessage = viewStore.paymentError {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .padding()
+                        .background(Color.red.opacity(0.1))
+                        .cornerRadius(8)
+                }
+
+                // 구매 버튼
+                Button {
+                    viewStore.send(.purchaseButtonTapped)
+                } label: {
+                    if viewStore.isProcessingPayment {
+                        ProgressView()
+                            .tint(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                    } else {
+                        Text("구매하기")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                    }
+                }
+                .background(viewStore.isProcessingPayment ? Color.gray : Color.blue)
+                .foregroundColor(.white)
+                .cornerRadius(12)
+                .disabled(viewStore.isProcessingPayment)
+            }
+            .padding(24)
+            .background(Color.white)
+            .cornerRadius(20)
+            .shadow(radius: 20)
+            .frame(maxWidth: 350)
         }
     }
 }

@@ -203,7 +203,7 @@ struct VideoExporter {
         let videoComposition = AVMutableVideoComposition()
         videoComposition.frameDuration = frameDuration
         videoComposition.renderSize = targetSize  // 최종 크기 (세로)
-        videoComposition.customVideoCompositorClass = VideoCompositorWithSubtitles.self
+        videoComposition.customVideoCompositorClass = VideoCompositor.self
 
         // LayerInstruction 생성
         let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)

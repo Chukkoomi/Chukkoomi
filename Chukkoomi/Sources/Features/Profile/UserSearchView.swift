@@ -141,6 +141,7 @@ private struct UserSearchNavigation: ViewModifier {
             ) { store in
                 OtherProfileView(store: store)
             }
+            .alert(store: store.scope(state: \.$alert, action: \.alert))
     }
 }
 
