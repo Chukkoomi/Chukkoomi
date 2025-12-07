@@ -21,23 +21,23 @@ struct CropControlView: View {
     // MARK: - Constants
 
     /// 컨트롤 뷰 전체 높이
-    private static let controlHeight: CGFloat = 120
+    private let controlHeight: CGFloat = 120
     /// 비율 버튼 간격
-    private static let ratioButtonSpacing: CGFloat = 8
+    private let ratioButtonSpacing: CGFloat = 8
     /// 버튼 가로 패딩
-    private static let buttonHorizontalPadding: CGFloat = 12
+    private let buttonHorizontalPadding: CGFloat = 12
     /// 버튼 세로 패딩
-    private static let buttonVerticalPadding: CGFloat = 8
+    private let buttonVerticalPadding: CGFloat = 8
     /// 액션 버튼 세로 패딩
-    private static let actionButtonVerticalPadding: CGFloat = 12
+    private let actionButtonVerticalPadding: CGFloat = 12
     /// 버튼 모서리 반경
-    private static let buttonCornerRadius: CGFloat = 8
+    private let buttonCornerRadius: CGFloat = 8
 
     var body: some View {
         VStack(spacing: 12) {
             // 비율 선택 스크롤
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Self.ratioButtonSpacing) {
+                HStack(spacing: ratioButtonSpacing) {
                     ForEach(EditPhotoFeature.CropAspectRatio.allCases) { ratio in
                         ratioButton(for: ratio)
                     }
@@ -62,7 +62,7 @@ struct CropControlView: View {
             }
             .padding(.horizontal, 20)
         }
-        .frame(height: Self.controlHeight)
+        .frame(height: controlHeight)
     }
 
     // MARK: - View Components
@@ -74,8 +74,8 @@ struct CropControlView: View {
         } label: {
             Text(ratio.rawValue)
                 .font(.caption)
-                .padding(.horizontal, Self.buttonHorizontalPadding)
-                .padding(.vertical, Self.buttonVerticalPadding)
+                .padding(.horizontal, buttonHorizontalPadding)
+                .padding(.vertical, buttonVerticalPadding)
                 .background(
                     Capsule()
                         .fill(selectedAspectRatio == ratio ? Color.blue : Color.gray.opacity(0.2))
@@ -91,10 +91,10 @@ struct CropControlView: View {
                 .font(.subheadline)
                 .fontWeight(.medium)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, Self.actionButtonVerticalPadding)
+                .padding(.vertical, actionButtonVerticalPadding)
                 .background(isActive ? Color.blue : Color.gray.opacity(0.2))
                 .foregroundColor(isActive ? Color.white : Color.primary)
-                .cornerRadius(Self.buttonCornerRadius)
+                .cornerRadius(buttonCornerRadius)
         }
     }
 }
